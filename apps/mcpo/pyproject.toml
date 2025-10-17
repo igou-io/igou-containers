@@ -1,0 +1,10 @@
+[project]
+name = "mcpo-app"
+version = "0.1.0"
+description = "MCPO application with Kubernetes MCP server"
+requires-python = ">=3.12"
+dependencies = [
+    "mcpo==0.0.19",
+    "kubernetes-mcp-server==0.0.53",
+    "mcp-server-time==2025.9.25"
+]
