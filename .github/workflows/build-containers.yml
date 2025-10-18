@@ -96,7 +96,6 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-            type=schedule,pattern={{date 'YYYYMMDD-hhmmss' tz='America/New_York'}}
             type=sha,format=long,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value={{date 'YYYY.MM.DD' tz='America/New_York'}},enable={{is_default_branch}}
