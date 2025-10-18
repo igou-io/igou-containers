@@ -99,9 +99,11 @@ jobs:
             type=schedule,pattern={{date 'YYYYMMDD-hhmmss' tz='America/New_York'}}
             type=sha,format=long,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value={{date 'YYYY.MM.DD' tz='America/New_York'}},enable={{is_default_branch}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
+        if: ${{ !env.ACT }}
         with:
           provenance: false
           context: ./apps/${{ matrix.app }}
