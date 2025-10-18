@@ -120,7 +120,7 @@ typing-inspection==0.4.2
     # via
     #   pydantic
     #   pydantic-settings
-uvicorn==0.37.0
+uvicorn==0.38.0
     # via
     #   mcp
     #   mcpo
