@@ -1,0 +1,119 @@
+name: Build and Push Containers
+
+# This workflow builds and pushes container images to Quay.io
+# Required GitHub Secrets:
+# - QUAY_USERNAME: Your Quay.io username
+# - QUAY_PASSWORD: Your Quay.io password or robot token
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'apps/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'apps/**'
+
+env:
+  REGISTRY_DOMAIN: quay.io
+  IMAGE_NAMESPACE: igou
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  # Detect which app directories have changed
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      changed-files: ${{ steps.changed-files.outputs.changed_files }}
+    steps:
+      - name: Get changed files
+        uses: bjw-s-labs/action-changed-files@v0.4.1
+        id: changed-files
+        with:
+          path: apps
+          include_only_directories: true
+          max_depth: 1
+
+      - name: Dump GitHub context
+        run: echo "$GITHUB_CONTEXT"
+
+  changed:
+    if: ${{ needs.prepare.outputs.changed-files != '[]' || github.event_name == 'workflow_dispatch' }}
+    name: Get Changed Apps
+    needs:
+      - prepare
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.apps.outputs.apps }}
+    steps:
+      - name: Get Apps
+        uses: actions/github-script@v8.0.0
+        id: apps
+        env:
+          APPS: ${{ github.event_name == 'workflow_dispatch' && inputs.app || join(fromJSON(needs.prepare.outputs.changed-files), ' ') }}
+        with:
+          script: |-
+            const { APPS } = process.env;
+            const appsToBuild = APPS.split(' ').filter(Boolean);
+            core.setOutput('apps', JSON.stringify(appsToBuild));
+            console.log('apps:', JSON.stringify(appsToBuild, null, 2));
+            core.summary.addHeading('Apps to build:').addList(appsToBuild).write();
+
+
+  # Build and push containers for changed apps
+  build:
+    needs: changed
+    if: ${{ needs.changes.outputs.apps != '[]' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: ${{ fromJson(needs.changed.outputs.apps) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Quay.io
+        if: ${{ github.event_name == 'push' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_DOMAIN }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.app }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=schedule,pattern={{date 'YYYYMMDD-hhmmss' tz='America/New_York'}}
+            type=sha,format=long,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          provenance: false
+          context: ./apps/${{ matrix.app }}
+          file: ./apps/${{ matrix.app }}/Containerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: ${{ env.PLATFORMS }}
+
+      - name: Output image details
+        run: |
+          echo "Built and pushed images for app: ${{ matrix.app }}"
+          echo "Tags: ${{ steps.meta.outputs.tags }}"
