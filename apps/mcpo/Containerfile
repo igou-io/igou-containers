@@ -1,12 +1,11 @@
-# yeye
 ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:10.0
 ARG UBI_IMAGE_MICRO=registry.access.redhat.com/ubi10/ubi-micro:10.0
 
-FROM ${UBI_IMAGE_MICRO} as target
+FROM ${UBI_IMAGE_MICRO} AS target
 
 # We don't have to start from scratch and repeate the ubi9 installation
 # Just copy the ubi9 image created and add new packages
-FROM ${UBI_IMAGE} as build
+FROM ${UBI_IMAGE} AS build
 
 ARG DNF_INSTALL_ROOT="/mnt/rootfs"
 ARG DNF_OPTS="--setopt install_weak_deps=false --nodocs"
