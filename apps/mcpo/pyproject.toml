@@ -5,7 +5,7 @@ description = "MCPO application with Kubernetes MCP server"
 requires-python = ">=3.12"
 dependencies = [
     "mcpo==0.0.19",
-    "kubernetes-mcp-server==0.0.53",
+    "kubernetes-mcp-server==0.0.57",
     "mcp-server-time==2025.9.25",
     "mcp-server-git==2025.12.18"
 ]
