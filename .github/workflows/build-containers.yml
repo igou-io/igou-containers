@@ -101,7 +101,7 @@ jobs:
             type=raw,value={{date 'YYYY.MM.DD' tz='America/New_York'}},enable={{is_default_branch}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         if: ${{ !env.ACT }}
         with:
           provenance: false
