@@ -1,20 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    "docker:pinDigests",
-    "helpers:pinGitHubActionDigests",
-    ":automergePr"
+    "github>igou-io/igou-devenv//renovate-base.json"
   ],
-  "lockFileMaintenance": {
-    "enabled": true
-  },
-  "schedule": [
-    "before 11pm on sunday"
-  ],
-  "automerge": true,
-  "separateMajorMinor": false,
-  "minimumReleaseAge": "10 days",
   "packageRules": [
     {
       "matchManagers": ["pip_requirements"],
