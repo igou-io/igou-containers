@@ -17,10 +17,6 @@
   "minimumReleaseAge": "10 days",
   "packageRules": [
     {
-      "matchUpdateTypes": ["patch"],
-      "enabled": false
-    },
-    {
       "matchManagers": ["pip_requirements"],
       "groupName": "python dependencies"
     },
