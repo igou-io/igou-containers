@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Purpose
 
-Monorepo for building container images, pushed to Quay.io (`quay.io/igou/<app>`). Each app lives under `apps/<app-name>/` with its own `Containerfile` and build context.
+Monorepo for building container images, pushed to GHCR (`ghcr.io/igou-io/<app>`). Each app lives under `apps/<app-name>/` with its own `Containerfile` and build context.
 
 ## CI/CD
 
