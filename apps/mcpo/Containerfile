@@ -1,5 +1,5 @@
-ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:10.1-1774545609
-ARG UBI_IMAGE_MICRO=registry.access.redhat.com/ubi10/ubi-micro:10.1-1774544317
+ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:10.1-1774545609@sha256:c9c81d3d11bfd56c4bb61a220d4598392b5fbc500df33f2b8e52fdd2cebb4944
+ARG UBI_IMAGE_MICRO=registry.access.redhat.com/ubi10/ubi-micro:10.1-1774544317@sha256:f86852f349dcd2b9ebccef4c8a46fdb75ff2fef9fde8581cef1feddb706be7ba
 
 FROM ${UBI_IMAGE_MICRO} AS target
 
@@ -23,7 +23,7 @@ WORKDIR /app
 
 RUN dnf install -y ${PACKAGES}
 
-RUN --mount=from=ghcr.io/astral-sh/uv,source=/uv,target=/bin/uv \
+RUN --mount=from=ghcr.io/astral-sh/uv@sha256:b1e699368d24c57cda93c338a57a8c5a119009ba809305cc8e86986d4a006754,source=/uv,target=/bin/uv \
 --mount=type=cache,target=/root/.cache/uv \
 --mount=type=bind,source=uv.lock,target=uv.lock \
 --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
