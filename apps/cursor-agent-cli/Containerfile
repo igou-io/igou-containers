@@ -57,7 +57,7 @@ RUN dnf ${DNF_OPTS_ROOT} ${DNF_OPTS} --skip-broken install \
 # bubblewrap — useful for sandbox isolation. Not in UBI10 repos, so install
 # from CentOS 10-stream BaseOS as a one-off (--repofrompath avoids persisting the repo).
 RUN dnf ${DNF_OPTS_ROOT} ${DNF_OPTS} --nogpgcheck \
-    --repofrompath=centos-baseos,https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/ \
+    --repofrompath=centos-baseos,https://mirror.stream.centos.org/10-stream/BaseOS/$(uname -m)/os/ \
     --repo=centos-baseos \
     install bubblewrap \
     && dnf ${DNF_OPTS_ROOT} clean all
