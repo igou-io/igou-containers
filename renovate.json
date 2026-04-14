@@ -1,9 +1,54 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "docker:pinDigests",
+    ":automergePr"
+  ],
   "lockFileMaintenance": {
     "enabled": true
   },
-  "extends": [
-    "config:recommended"
+  "schedule": [
+    "before 11pm on sunday"
+  ],
+  "automerge": true,
+  "separateMajorMinor": false,
+  "minimumReleaseAge": "10 days",
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["patch"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["pip_requirements"],
+      "groupName": "python dependencies"
+    },
+    {
+      "matchManagers": ["dockerfile"],
+      "groupName": "container base images"
+    },
+    {
+      "matchManagers": ["custom.regex"],
+      "groupName": "cli tools"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "matchManagers": ["npm"],
+      "groupName": "npm dependencies"
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "Update pinned versions in Containerfiles via '# renovate:' comments",
+      "customType": "regex",
+      "managerFilePatterns": ["/Containerfile$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\n(?:ARG )?\\w+_VERSION=\"(?<currentValue>[^\"]+)\""
+      ],
+      "versioningTemplate": "semver"
+    }
   ]
 }
