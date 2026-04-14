@@ -14,7 +14,7 @@ on:
       - 'apps/**'
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -114,6 +114,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: ${{ env.PLATFORMS }}
+
+      - name: Generate SBOM
+        if: ${{ github.event_name == 'push' }}
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}
+          artifact-name: ${{ matrix.app }}-sbom
+          output-file: ${{ matrix.app }}.spdx.json
+          format: spdx-json
+          dependency-snapshot: true
 
       - name: Output image details
         run: |
