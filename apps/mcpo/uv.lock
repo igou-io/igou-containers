@@ -454,7 +454,7 @@ wheels = [
 
 [[package]]
 name = "mcpo"
-version = "0.0.19"
+version = "0.0.20"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -468,9 +468,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "watchdog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/22/96/a57adf8110349e755ce3a1120029723a2aa361d5b46848dcbee596224f5c/mcpo-0.0.19.tar.gz", hash = "sha256:b8faaa024e3cd47f35e87b28763613beb72dfb8e5db8327bd97cf88bc1ccf2af", size = 84192, upload-time = "2025-10-14T21:19:31.036Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/35/a7ef72c85d162c53d53035c113892cecfb3f1b4105714bef317ec8e07d4f/mcpo-0.0.20.tar.gz", hash = "sha256:bc192c8775aa9f46ecf3e84180644079f8832b5ed9f12a0aa1cb9e2728e0590c", size = 84572, upload-time = "2026-02-27T17:57:28.271Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/20/a94d08d9ba72f7aa6927fcab6df7a3026eb809d58dd78c155b3b14549d02/mcpo-0.0.19-py3-none-any.whl", hash = "sha256:50aca34e6612ac64773f6e0499856ac3c97cea730cd4fc668207557e73a035d1", size = 31787, upload-time = "2025-10-14T21:19:29.839Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/c5/bccdbf5e37829a4a96c0d3c63cf0921e800c28e7ad7b39d84badf9327015/mcpo-0.0.20-py3-none-any.whl", hash = "sha256:ed2d7dd943fc250c68b3cfd2f6277803cde28b47686d3ac4d00dfbd4cce20885", size = 32896, upload-time = "2026-02-27T17:57:27.449Z" },
 ]
 
 [[package]]
@@ -489,7 +489,7 @@ requires-dist = [
     { name = "kubernetes-mcp-server", specifier = "==0.0.60" },
     { name = "mcp-server-git", specifier = "==2026.1.14" },
     { name = "mcp-server-time", specifier = "==2026.1.26" },
-    { name = "mcpo", specifier = "==0.0.19" },
+    { name = "mcpo", specifier = "==0.0.20" },
 ]
 
 [[package]]
