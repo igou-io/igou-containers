@@ -69,7 +69,7 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/usr/local/bin
 # ---------------------------------------------------------------------------
 
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION="v1.35.3"
+ARG KUBECTL_VERSION="v1.35.4"
 # renovate: datasource=github-releases depName=helm/helm
 ARG HELM_VERSION="v4.1.4"
 # renovate: datasource=github-releases depName=cli/cli
