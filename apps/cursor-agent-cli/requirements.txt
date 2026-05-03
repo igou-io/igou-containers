@@ -1,4 +1,4 @@
-ansible==13.5.0
+ansible==13.6.0
 ansible-runner==2.4.3
 ansible-lint==26.4.0
 ansible-creator==26.4.2
