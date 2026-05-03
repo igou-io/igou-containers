@@ -19,7 +19,6 @@
       ]
     },
     "seccomp": {
-      "bpfPath": "/usr/local/lib/claude-sandbox/unix-block.bpf",
       "applyPath": "/usr/local/lib/claude-sandbox/apply-seccomp"
     }
   }

@@ -102,10 +102,10 @@ else
     fail "anthropic API in allowed domains"
 fi
 
-if python3 -c "import json; s=json.load(open('$BAKED_SETTINGS')); assert s['sandbox']['seccomp']['bpfPath'] == '/usr/local/lib/claude-sandbox/unix-block.bpf'" 2>/dev/null; then
-    ok "seccomp bpfPath configured"
+if python3 -c "import json; s=json.load(open('$BAKED_SETTINGS')); assert s['sandbox']['seccomp']['applyPath'] == '/usr/local/lib/claude-sandbox/apply-seccomp'" 2>/dev/null; then
+    ok "seccomp applyPath configured"
 else
-    fail "seccomp bpfPath configured"
+    fail "seccomp applyPath configured"
 fi
 
 if command -v bwrap &>/dev/null; then
@@ -127,7 +127,7 @@ else
     fail "bwrap executes under hardened flags"
 fi
 
-if /usr/local/lib/claude-sandbox/apply-seccomp /usr/local/lib/claude-sandbox/unix-block.bpf echo "ok" &>/dev/null; then
+if /usr/local/lib/claude-sandbox/apply-seccomp echo "ok" &>/dev/null; then
     ok "seccomp filter applies successfully"
 else
     fail "seccomp filter applies successfully"

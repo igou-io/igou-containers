@@ -190,6 +190,7 @@ USER root
 
 # Seccomp filter for Claude Code sandbox (blocks unix domain sockets).
 # Version pinned in package.json, managed by Renovate's native npm manager.
+# v0.0.47+ bakes the BPF program into apply-seccomp; no separate .bpf file.
 COPY package.json /tmp/sandbox/package.json
 RUN set -eux; \
     UARCH=$(uname -m); \
@@ -197,7 +198,6 @@ RUN set -eux; \
     SANDBOX_DIR=/opt/claude-sandbox; \
     mkdir -p "$SANDBOX_DIR"; \
     cd /tmp/sandbox && npm install --no-save 2>/dev/null && \
-    cp "node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/${SECCOMP_ARCH}/unix-block.bpf" "$SANDBOX_DIR/" && \
     cp "node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/${SECCOMP_ARCH}/apply-seccomp" "$SANDBOX_DIR/" && \
     chmod +x "$SANDBOX_DIR/apply-seccomp"
 
