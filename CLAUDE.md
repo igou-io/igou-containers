@@ -44,6 +44,21 @@ Hardened at runtime via podman flags (`--cap-drop=ALL`, noexec `/tmp`, resource 
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
 - `FROM` lines — UBI base image digests (dockerfile manager)
 
+### opencode
+
+Hardened UBI10-based container for running [opencode](https://opencode.ai) against a local llama.cpp / vLLM endpoint (or any OpenAI-compatible provider). Same three-stage build pattern as cursor-agent-cli:
+- Stage 1: UBI micro base filesystem
+- Stage 2: UBI full image installs system packages, CLI tools, and Python packages into a custom installroot
+- opencode build stage: installs the opencode binary via the upstream installer (`https://opencode.ai/install`) as UID 1000 — drops at `~/.opencode/bin/opencode`
+- Final stage: `FROM scratch`, copies rootfs + opencode binary
+
+No baked sandbox config (opencode has no equivalent of Claude's `settings.json` or Cursor's `sandbox.json`), so the entrypoint is a minimal git/GitHub PAT setup with no merge step. The opencode config lives in `~/.config/opencode/opencode.jsonc` on the host and is bind-mounted into the container by the `opencode-run` launcher in `igou-devenv/bin/`.
+
+**Dependencies managed by Renovate:**
+- `requirements.txt` — Python packages (pip_requirements manager)
+- `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
+- `FROM` lines — UBI base image digests (dockerfile manager)
+
 ### cursor-agent-cli
 
 Hardened UBI10-based container for running Cursor's agent CLI with the same infrastructure tools as claude-code. Same three-stage build pattern:
