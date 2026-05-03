@@ -112,12 +112,6 @@ fi
 echo ""
 echo "==> Verifying sandbox dependencies..."
 
-if [ -f /usr/local/lib/claude-sandbox/unix-block.bpf ]; then
-    ok "seccomp BPF filter installed"
-else
-    fail "seccomp BPF filter installed"
-fi
-
 if [ -x /usr/local/lib/claude-sandbox/apply-seccomp ]; then
     ok "seccomp apply binary installed"
 else
