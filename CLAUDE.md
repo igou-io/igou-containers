@@ -59,6 +59,20 @@ No baked sandbox config (opencode has no equivalent of Claude's `settings.json` 
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
 - `FROM` lines — UBI base image digests (dockerfile manager)
 
+### opencode-dev
+
+Unhardened sibling of the `opencode` image. Identical build pattern, but two intentional differences from the hardened variant:
+
+- `pip`/`pip3`/ensurepip are **not** removed — the agent can `pip install --user <pkg>` at runtime.
+- [uv](https://github.com/astral-sh/uv) is baked in at `/usr/local/bin/uv` (copied from `ghcr.io/astral-sh/uv:<version>` via the dockerfile manager — Renovate updates the tag automatically).
+
+Use this image when you need the agent to install ad-hoc Python packages mid-task. Launch via `opencode-run --dev` (which sets `IMAGE=ghcr.io/igou-io/opencode-dev:latest`) or `opencode-run --image ghcr.io/igou-io/opencode-dev:latest`. Runtime hardening (cap-drop, noexec /tmp, resource limits) is unchanged — only the image-level package-manager removal is reverted. The image's `TMPDIR` is set to `/home/igou/.cache` so pip and uv can use an exec-able scratch dir.
+
+**Dependencies managed by Renovate:**
+- `requirements.txt` — Python packages (pip_requirements manager)
+- `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
+- `FROM` and `COPY --from=` lines — base images and uv tag (dockerfile manager)
+
 ### cursor-agent-cli
 
 Hardened UBI10-based container for running Cursor's agent CLI with the same infrastructure tools as claude-code. Same three-stage build pattern:
