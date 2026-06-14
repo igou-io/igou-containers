@@ -439,7 +439,7 @@ wheels = [
 
 [[package]]
 name = "mcp-server-time"
-version = "2026.1.26"
+version = "2026.6.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mcp" },
@@ -447,9 +447,9 @@ dependencies = [
     { name = "tzdata" },
     { name = "tzlocal" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/e1/0f25a64f430c222511ec10fee3e705921740f6b45b1519e0674cb3ec378d/mcp_server_time-2026.1.26.tar.gz", hash = "sha256:fcef6991e8d8480ed7d9be8016cb853f8c697d146322d3e698f45b586d86f1c1", size = 63634, upload-time = "2026-01-27T09:25:57.95Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/83/9a2e2ab4da69f1b3acbd6c0763d694f599377cc940c7fb1778103fafd15a/mcp_server_time-2026.6.4.tar.gz", hash = "sha256:5d14cba0bd6f71d5b75a12fb3780d270c7feb10d6ac9aba7f13b10233615a7a1", size = 63427, upload-time = "2026-06-04T01:22:43.902Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/c5/ee882c40caeb46405d40166a8614410de26aa54996611b8baab86a857365/mcp_server_time-2026.1.26-py3-none-any.whl", hash = "sha256:7fa7ef7c3cc088d30539ff3de42736324ada8b9353256da2d113d8c977eccbd9", size = 6630, upload-time = "2026-01-27T09:25:56.82Z" },
+    { url = "https://files.pythonhosted.org/packages/77/2b/4ae11c581639fcee79e208ebc5c0215c5d28bade04f8efb8090913d6f964/mcp_server_time-2026.6.4-py3-none-any.whl", hash = "sha256:22cea5f7e01ad6a7750a2b3d38051e91df085db914d29ef2b889aca6b5cd69e1", size = 6699, upload-time = "2026-06-04T01:22:42.58Z" },
 ]
 
 [[package]]
@@ -488,7 +488,7 @@ dependencies = [
 requires-dist = [
     { name = "kubernetes-mcp-server", specifier = "==0.0.62" },
     { name = "mcp-server-git", specifier = "==2026.6.4" },
-    { name = "mcp-server-time", specifier = "==2026.1.26" },
+    { name = "mcp-server-time", specifier = "==2026.6.4" },
     { name = "mcpo", specifier = "==0.0.20" },
 ]
 
