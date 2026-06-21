@@ -65,7 +65,7 @@ ARG KUBECTL_VERSION="v1.36.1"
 # renovate: datasource=github-releases depName=helm/helm
 ARG HELM_VERSION="v4.2.0"
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION="v2.93.0"
+ARG GH_VERSION="v2.94.0"
 # renovate: datasource=github-releases depName=argoproj/argo-cd
 ARG ARGOCD_VERSION="v3.4.3"
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.*)$
@@ -77,7 +77,7 @@ ARG KUBECONFORM_VERSION="v0.8.0"
 # renovate: datasource=github-releases depName=tektoncd/cli
 ARG TKN_VERSION="v0.45.0"
 # renovate: datasource=github-releases depName=rclone/rclone
-ARG RCLONE_VERSION="v1.74.2"
+ARG RCLONE_VERSION="v1.74.3"
 # renovate: datasource=github-releases depName=containers/kubernetes-mcp-server
 ARG K8S_MCP_VERSION="v0.0.62"
 
