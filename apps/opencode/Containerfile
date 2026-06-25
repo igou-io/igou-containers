@@ -1,5 +1,5 @@
-ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:latest@sha256:9d3b5102e7ae4f82914a1791610b75acef134b93158be6005b6ae9218c163550
-ARG UBI_IMAGE_MICRO=registry.access.redhat.com/ubi10/ubi-micro:latest@sha256:6b19fae23a4bab50b2494471674577365a64667365d658671e3f9e8a5a698df3
+ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:latest@sha256:516ef28e78e388d12e31618326da68e21dcfc40f767f0c37c3b57059c642a4f0
+ARG UBI_IMAGE_MICRO=registry.access.redhat.com/ubi10/ubi-micro:latest@sha256:e025b421d29b8ecd86fcfd8a4ad18c0d7de747cbcc4e372f414ba02390b031b6
 
 FROM ${UBI_IMAGE_MICRO} AS target
 
@@ -168,12 +168,15 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/workspace && \
 # ---------------------------------------------------------------------------
 FROM ${UBI_IMAGE} AS opencode-build
 
+# renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.*)$
+ARG OPENCODE_VERSION="1.17.10"
+
 RUN dnf install -y curl tar gzip && \
     groupadd -g 1000 igou 2>/dev/null || true && \
     useradd -m -u 1000 -g 1000 igou 2>/dev/null || true
 
 USER 1000
-RUN curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path && \
+RUN curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}" --no-modify-path && \
     ~/.opencode/bin/opencode --version
 USER root
 
