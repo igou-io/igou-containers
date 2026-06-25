@@ -172,12 +172,15 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/workspace && \
 # ---------------------------------------------------------------------------
 FROM ${UBI_IMAGE} AS opencode-build
 
+# renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.*)$
+ARG OPENCODE_VERSION="1.17.10"
+
 RUN dnf install -y curl tar gzip && \
     groupadd -g 1000 igou 2>/dev/null || true && \
     useradd -m -u 1000 -g 1000 igou 2>/dev/null || true
 
 USER 1000
-RUN curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path && \
+RUN curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}" --no-modify-path && \
     ~/.opencode/bin/opencode --version
 USER root
 
