@@ -61,17 +61,17 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/usr/local/bin
 # ---------------------------------------------------------------------------
 
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION="v1.36.1"
+ARG KUBECTL_VERSION="v1.36.2"
 # renovate: datasource=github-releases depName=helm/helm
-ARG HELM_VERSION="v4.2.0"
+ARG HELM_VERSION="v4.2.2"
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION="v2.94.0"
+ARG GH_VERSION="v2.95.0"
 # renovate: datasource=github-releases depName=argoproj/argo-cd
-ARG ARGOCD_VERSION="v3.4.3"
+ARG ARGOCD_VERSION="v3.4.4"
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.*)$
 ARG KUSTOMIZE_VERSION="v5.8.1"
 # renovate: datasource=github-releases depName=kubevirt/kubevirt
-ARG VIRTCTL_VERSION="v1.8.3"
+ARG VIRTCTL_VERSION="v1.8.4"
 # renovate: datasource=github-releases depName=yannh/kubeconform
 ARG KUBECONFORM_VERSION="v0.8.0"
 # renovate: datasource=github-releases depName=tektoncd/cli
