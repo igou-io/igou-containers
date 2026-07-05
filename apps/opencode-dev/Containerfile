@@ -79,7 +79,7 @@ ARG TKN_VERSION="v0.45.0"
 # renovate: datasource=github-releases depName=rclone/rclone
 ARG RCLONE_VERSION="v1.74.3"
 # renovate: datasource=github-releases depName=containers/kubernetes-mcp-server
-ARG K8S_MCP_VERSION="v0.0.62"
+ARG K8S_MCP_VERSION="v0.0.63"
 
 # ---------------------------------------------------------------------------
 # Binary downloads into rootfs
