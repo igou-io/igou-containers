@@ -173,7 +173,7 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/workspace && \
 FROM ${UBI_IMAGE} AS opencode-build
 
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.*)$
-ARG OPENCODE_VERSION="1.17.10"
+ARG OPENCODE_VERSION="1.17.11"
 
 RUN dnf install -y curl tar gzip && \
     groupadd -g 1000 igou 2>/dev/null || true && \
