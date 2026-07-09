@@ -1,0 +1,22 @@
+ARG UBI_IMAGE_MINIMAL=registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:b217fa65d8c21058887b18f005f587e47a17dd1281a5196ac88d01724a273dbd
+
+FROM ${UBI_IMAGE_MINIMAL}
+
+RUN microdnf install -y --setopt=install_weak_deps=0 --nodocs squid \
+    && microdnf clean all \
+    && rm -rf /var/cache/dnf /var/cache/yum /var/log/dnf* /var/log/yum.*
+
+COPY squid.conf /etc/squid/squid.conf
+
+# OpenShift runs containers with an arbitrary UID and GID 0 — make everything
+# squid touches at runtime group-0 owned and group-writable.
+RUN rm -rf /var/log/squid /var/spool/squid /run/squid \
+    && mkdir -p /var/log/squid /var/spool/squid /run/squid \
+    && chgrp -R 0 /var/log/squid /var/spool/squid /run/squid /etc/squid \
+    && chmod -R g=u /var/log/squid /var/spool/squid /run/squid /etc/squid
+
+USER 1001:0
+EXPOSE 3128
+
+# -N foreground, -Y fast reload, -C no catch fatal signals, -d 1 log to stderr
+ENTRYPOINT ["/usr/sbin/squid", "-f", "/etc/squid/squid.conf", "-NYC", "-d", "1"]

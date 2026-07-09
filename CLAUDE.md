@@ -12,6 +12,8 @@ GitHub Actions workflow (`.github/workflows/build-containers.yml`) automatically
 
 Image tags: `latest`, `YYYY.MM.DD`, full commit SHA, and branch name.
 
+Apps that can't build for all default platforms declare their own in an `apps/<app>/PLATFORMS` file (e.g. `zfs-exporter` is `linux/amd64` only — OpenZFS publishes no aarch64 EL packages).
+
 ## Adding a New App
 
 1. Create `apps/<app-name>/` with a `Containerfile` and any build context files.
@@ -86,6 +88,26 @@ Sandbox config baked at `/etc/cursor/sandbox.json` with network deny-by-default 
 **Dependencies managed by Renovate:**
 - `requirements.txt` — Python packages (pip_requirements manager)
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
+- `FROM` lines — UBI base image digests (dockerfile manager)
+
+### zfs-exporter
+
+[pdf/zfs_exporter](https://github.com/pdf/zfs_exporter) plus the OpenZFS userland CLI on UBI 10 minimal, for Prometheus monitoring of the TrueNAS host (#81). Three-stage build:
+- Fetch stage: downloads the zfs_exporter release binary, verified against upstream `sha256sums.txt`
+- RPM stage: UBI full downloads signed OpenZFS EL10 RPMs (2.3 line from `zfs-testing` — EL10 stable is still 2.2; 2.3 matches the TrueNAS 25.10 host kmod)
+- Final stage: UBI minimal installs the userland CLI + libs via `rpm --nodeps --noscripts` after GPG verification (the kmod/sysstat/systemd requirements are host concerns), gated by an `ldd` check
+
+`linux/amd64` only (see `PLATFORMS` file). Runs as 65534; needs only `/dev/zfs` passed through at runtime.
+
+**Dependencies managed by Renovate:**
+- `# renovate:` ARG annotations — zfs_exporter release and OpenZFS version (capped `<2.4.0` via packageRule in `renovate.json` to track the host's 2.3 line)
+- `FROM` lines — UBI base image digests (dockerfile manager)
+
+### squid
+
+[Squid](https://www.squid-cache.org/) forward proxy from UBI 10 AppStream on UBI 10 minimal, built for OpenShift: single-stage, arbitrary-UID compatible (GID 0 group perms, `USER 1001:0`), foreground squid with access log on stdout and cache/debug on stderr, memory-only cache, no pid file, 5s shutdown for fast pod termination. Config baked at `/etc/squid/squid.conf` (allow RFC1918/ULA clients to 80/443 only); override by mounting a ConfigMap over it.
+
+**Dependencies managed by Renovate:**
 - `FROM` lines — UBI base image digests (dockerfile manager)
 
 ## Build Conventions
