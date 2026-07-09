@@ -1,0 +1,77 @@
+ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:latest@sha256:516ef28e78e388d12e31618326da68e21dcfc40f767f0c37c3b57059c642a4f0
+ARG UBI_IMAGE_MINIMAL=registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:b217fa65d8c21058887b18f005f587e47a17dd1281a5196ac88d01724a273dbd
+
+# ---------------------------------------------------------------------------
+# Fetch stage — download and checksum-verify the zfs_exporter release binary
+# ---------------------------------------------------------------------------
+FROM ${UBI_IMAGE_MINIMAL} AS fetch
+
+# renovate: datasource=github-releases depName=pdf/zfs_exporter
+ARG ZFS_EXPORTER_VERSION="v2.3.12"
+ARG TARGETARCH
+
+RUN microdnf install -y --setopt=install_weak_deps=0 --nodocs tar gzip \
+    && VER="${ZFS_EXPORTER_VERSION#v}" \
+    && curl -fsSLO "https://github.com/pdf/zfs_exporter/releases/download/${ZFS_EXPORTER_VERSION}/zfs_exporter-${VER}.linux-${TARGETARCH}.tar.gz" \
+    && curl -fsSL "https://github.com/pdf/zfs_exporter/releases/download/${ZFS_EXPORTER_VERSION}/sha256sums.txt" \
+       | grep "linux-${TARGETARCH}.tar.gz" | sha256sum -c - \
+    && tar -xzf "zfs_exporter-${VER}.linux-${TARGETARCH}.tar.gz" \
+       --strip-components=1 "zfs_exporter-${VER}.linux-${TARGETARCH}/zfs_exporter" \
+    && install -m 0755 zfs_exporter /usr/local/bin/zfs_exporter
+
+# ---------------------------------------------------------------------------
+# RPM stage — download signed OpenZFS userland RPMs from the EL10 repo.
+# RHEL/UBI ships no zfs packages; the OpenZFS project repo does, but its zfs
+# package hard-requires zfs-kmod/sysstat/systemd, which are host (or non-UBI)
+# concerns — only the userland CLI + libs are wanted, so the RPMs are pulled
+# here and installed dep-free in the final stage.
+# The 2.3.x line (matching the TrueNAS 25.10 host kmod) is only published in
+# the zfs-testing repo; EL10 stable still carries 2.2.
+# ---------------------------------------------------------------------------
+FROM ${UBI_IMAGE} AS rpms
+
+# renovate: datasource=github-releases depName=openzfs/zfs extractVersion=^zfs-(?<version>.*)$
+ARG ZFS_VERSION="2.3.8"
+
+RUN dnf install -y dnf-plugins-core \
+    && rpm -ivh https://zfsonlinux.org/epel/zfs-release-2-8.el10.noarch.rpm \
+    && mkdir /rpms && cd /rpms \
+    && dnf download --enablerepo=zfs-testing \
+       "zfs-${ZFS_VERSION}" \
+       "libzfs*-${ZFS_VERSION}" \
+       "libnvpair*-${ZFS_VERSION}" \
+       "libuutil*-${ZFS_VERSION}" \
+       "libzpool*-${ZFS_VERSION}" \
+    && rm -f /rpms/*debuginfo* /rpms/*debugsource* /rpms/*devel*
+
+# ---------------------------------------------------------------------------
+# Final image — UBI minimal + OpenZFS userland CLI + zfs_exporter
+# ---------------------------------------------------------------------------
+FROM ${UBI_IMAGE_MINIMAL}
+
+RUN microdnf install -y --setopt=install_weak_deps=0 --nodocs \
+       systemd-libs util-linux-core libtirpc openssl-libs \
+    && microdnf clean all \
+    && rm -rf /var/cache/dnf /var/cache/yum /var/log/dnf* /var/log/yum.*
+
+COPY --from=rpms /etc/pki/rpm-gpg/RPM-GPG-KEY-openzfs-el-10 /tmp/
+COPY --from=rpms /rpms/ /tmp/rpms/
+
+# Verify signatures, then install userland only: --nodeps skips the
+# zfs-kmod/sysstat/systemd requirements (the host kernel module is used via
+# /dev/zfs), --noscripts skips systemd unit scriptlets. Keeping the rpmdb
+# entries means SBOM scanners still see the OpenZFS packages. The ldd check
+# fails the build if any real shared-library dependency is missing.
+RUN rpm --import /tmp/RPM-GPG-KEY-openzfs-el-10 \
+    && rpm -K /tmp/rpms/*.rpm \
+    && ! rpm -K /tmp/rpms/*.rpm | grep -v "digests signatures OK" \
+    && rpm -Uvh --nodeps --noscripts /tmp/rpms/*.rpm \
+    && rm -rf /tmp/rpms /tmp/RPM-GPG-KEY-openzfs-el-10 \
+    && ! ldd /usr/sbin/zfs /usr/sbin/zpool | grep "not found"
+
+COPY --from=fetch /usr/local/bin/zfs_exporter /usr/local/bin/zfs_exporter
+
+# Read-only zfs/zpool ioctls need no root — /dev/zfs is all it needs
+USER 65534:65534
+EXPOSE 9134
+ENTRYPOINT ["/usr/local/bin/zfs_exporter"]

@@ -17,6 +17,11 @@
       "groupName": "cli tools"
     },
     {
+      "description": "Track the OpenZFS 2.3 line — must match the TrueNAS 25.10 host kmod (zfs-exporter)",
+      "matchDepNames": ["openzfs/zfs"],
+      "allowedVersions": "<2.4.0"
+    },
+    {
       "matchManagers": ["github-actions"],
       "groupName": "github actions"
     },

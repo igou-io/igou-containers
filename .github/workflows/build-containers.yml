@@ -75,6 +75,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
+      # Apps that can't build for all default platforms declare their own in
+      # an apps/<app>/PLATFORMS file (e.g. zfs-exporter: OpenZFS publishes no
+      # aarch64 EL packages)
+      - name: Determine platforms
+        id: platforms
+        run: |
+          if [ -f "apps/${{ matrix.app }}/PLATFORMS" ]; then
+            echo "platforms=$(cat "apps/${{ matrix.app }}/PLATFORMS")" >> "$GITHUB_OUTPUT"
+          else
+            echo "platforms=${{ env.PLATFORMS }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4
 
@@ -113,7 +125,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: ${{ env.PLATFORMS }}
+          platforms: ${{ steps.platforms.outputs.platforms }}
 
       - name: Generate SBOM
         if: ${{ github.event_name == 'push' }}
