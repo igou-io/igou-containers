@@ -1,4 +1,4 @@
-ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:latest@sha256:516ef28e78e388d12e31618326da68e21dcfc40f767f0c37c3b57059c642a4f0
+ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:latest@sha256:be840bb76e74900d39d5e4620c184e89382dcfce09cb05c98b4e1246d55612a5
 ARG UBI_IMAGE_MINIMAL=registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:b217fa65d8c21058887b18f005f587e47a17dd1281a5196ac88d01724a273dbd
 
 # ---------------------------------------------------------------------------
