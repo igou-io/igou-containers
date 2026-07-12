@@ -21,6 +21,19 @@ Apps that can't build for all default platforms declare their own in an `apps/<a
 
 ## Current Apps
 
+### adb-exporter
+
+From-source build of [adb-exporter](https://github.com/david-igou/adb-exporter), a Prometheus exporter for Android devices scraped over the `adb` CLI. UBI 9 based — the runtime needs the `adb` binary, and EPEL packages `android-tools` only for el9 (not el10). Three-stage build:
+- Build stage: `ubi9/go-toolset` clones the repo at a Renovate-pinned tag and builds a static binary (`CGO_ENABLED=0`) with version/revision ldflags
+- rootfs stage: UBI micro filesystem in a custom installroot + `android-tools` from EPEL 9; its `libprotobuf` dependency is in RHEL AppStream but not UBI's repo subset, so protobuf alone comes from CentOS Stream 9 AppStream (same el9 ABI)
+- Final stage: `FROM scratch`, rootfs + binary at `/usr/local/bin/adb-exporter`, UID 1001, port 9836
+
+Runtime note: `HOME=/home/adb-exporter` is group-writable for arbitrary-UID; mount an already-authorized adb key at `~/.android` or the target device will prompt for authorization on first connect.
+
+**Dependencies managed by Renovate:**
+- `# renovate:` ARG annotation — pinned adb-exporter release tag (github-tags datasource)
+- `FROM` lines — UBI base image digests (dockerfile manager)
+
 ### mcpo
 
 An [MCPO](https://github.com/open-webui/mcpo) (MCP-to-OpenAPI proxy) container bundling several MCP servers. Built on UBI 10 micro with a multi-stage distroless-style build pattern:
