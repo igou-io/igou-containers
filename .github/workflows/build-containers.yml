@@ -8,14 +8,13 @@ on:
     branches: [ main ]
     paths:
       - 'apps/**'
+  # No paths filter: change detection happens in the prepare job, and the
+  # all-green aggregate must report on every PR to serve as a required check.
   pull_request:
     branches: [ main ]
-    paths:
-      - 'apps/**'
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 env:
   REGISTRY: ghcr.io
@@ -66,8 +65,13 @@ jobs:
   # Build and push containers for changed apps
   build:
     needs: changed
-    if: ${{ needs.changes.outputs.apps != '[]' }}
+    if: ${{ needs.changed.outputs.apps != '[]' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # anchore/sbom-action dependency snapshot submission
+      packages: write
+      id-token: write
+      attestations: write
     strategy:
       matrix:
         app: ${{ fromJson(needs.changed.outputs.apps) }}
@@ -114,6 +118,7 @@ jobs:
             type=raw,value={{date 'YYYY.MM.DD' tz='America/New_York'}},enable={{is_default_branch}}
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         if: ${{ !env.ACT }}
         with:
@@ -126,6 +131,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: ${{ steps.platforms.outputs.platforms }}
+
+      - name: Attest build provenance
+        if: ${{ github.event_name == 'push' }}
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
 
       - name: Generate SBOM
         if: ${{ github.event_name == 'push' }}
@@ -141,3 +154,22 @@ jobs:
         run: |
           echo "Built and pushed images for app: ${{ matrix.app }}"
           echo "Tags: ${{ steps.meta.outputs.tags }}"
+
+  # Aggregate result that reports on every PR, including ones where build is
+  # skipped — this is the branch ruleset's required check.
+  all-green:
+    name: all-green
+    if: ${{ always() }}
+    needs:
+      - prepare
+      - changed
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "A dependency job failed or was cancelled"
+            exit 1
+          fi
+          echo "All jobs succeeded or were skipped"
