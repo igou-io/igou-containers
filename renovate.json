@@ -26,6 +26,14 @@
       "groupName": "github actions"
     },
     {
+      "description": "UBI base images carry security fixes as new digests/builds — ship them immediately, outside the weekly schedule and age gate",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["registry.access.redhat.com/**"],
+      "groupName": "ubi base images",
+      "schedule": ["at any time"],
+      "minimumReleaseAge": null
+    },
+    {
       "matchManagers": ["npm"],
       "groupName": "npm dependencies"
     }
