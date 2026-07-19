@@ -65,7 +65,7 @@ ARG KUBECTL_VERSION="v1.36.2"
 # renovate: datasource=github-releases depName=helm/helm
 ARG HELM_VERSION="v4.2.2"
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION="v2.95.0"
+ARG GH_VERSION="v2.96.0"
 # renovate: datasource=github-releases depName=argoproj/argo-cd
 ARG ARGOCD_VERSION="v3.4.4"
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.*)$
@@ -77,7 +77,7 @@ ARG KUBECONFORM_VERSION="v0.8.0"
 # renovate: datasource=github-releases depName=tektoncd/cli
 ARG TKN_VERSION="v0.45.0"
 # renovate: datasource=github-releases depName=rclone/rclone
-ARG RCLONE_VERSION="v1.74.3"
+ARG RCLONE_VERSION="v1.74.4"
 # renovate: datasource=github-releases depName=containers/kubernetes-mcp-server
 ARG K8S_MCP_VERSION="v0.0.63"
 
@@ -173,7 +173,7 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/workspace && \
 FROM ${UBI_IMAGE} AS opencode-build
 
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.*)$
-ARG OPENCODE_VERSION="1.17.13"
+ARG OPENCODE_VERSION="1.17.15"
 
 RUN dnf install -y curl tar gzip && \
     groupadd -g 1000 igou 2>/dev/null || true && \
