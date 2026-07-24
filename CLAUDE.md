@@ -34,6 +34,18 @@ Runtime note: `HOME=/home/adb-exporter` is group-writable for arbitrary-UID; mou
 - `# renovate:` ARG annotation — pinned adb-exporter release tag (github-tags datasource)
 - `FROM` lines — UBI base image digests (dockerfile manager)
 
+### mcp-adc-exporter
+
+From-source build of [mcp-adc-exporter](https://github.com/david-igou/mcp-adc-exporter), a Prometheus exporter for Microchip MCP3xxx SPI ADCs (MCP3004/3008/3204/3208) read over Linux spidev on SBC-class hosts. Two-stage build:
+- Build stage: `ubi9/go-toolset` clones the repo at a Renovate-pinned tag and builds a fully static binary (`CGO_ENABLED=0`, pure Go) with version/revision ldflags
+- Final stage: `FROM scratch`, UBI 10 micro rootfs + binary at `/usr/local/bin/mcp-adc-exporter`, UID 1001, port 9958
+
+Runtime note: the SPI character device must be passed through and readable, e.g. `podman run --device /dev/spidev0.0 --group-add keep-groups`; the config file is expected at `/etc/mcp-adc-exporter/config.yaml` (override via args).
+
+**Dependencies managed by Renovate:**
+- `# renovate:` ARG annotation — pinned mcp-adc-exporter release tag (github-tags datasource)
+- `FROM` lines — UBI base image digests (dockerfile manager)
+
 ### mcpo
 
 An [MCPO](https://github.com/open-webui/mcpo) (MCP-to-OpenAPI proxy) container bundling several MCP servers. Built on UBI 10 micro with a multi-stage distroless-style build pattern:

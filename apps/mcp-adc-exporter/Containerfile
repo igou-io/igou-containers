@@ -1,0 +1,32 @@
+ARG GO_TOOLSET_IMAGE=registry.access.redhat.com/ubi9/go-toolset:9.8-1784751462@sha256:5f5c97d7e6d917b8328321bcf2c9d5700de65b72d434ecdbbba6f35aaebaad40
+ARG UBI_IMAGE_MICRO=registry.access.redhat.com/ubi10/ubi-micro:10.1-1774544317@sha256:f86852f349dcd2b9ebccef4c8a46fdb75ff2fef9fde8581cef1feddb706be7ba
+
+FROM ${UBI_IMAGE_MICRO} AS target
+
+# Build mcp-adc-exporter from source at a pinned tag
+FROM ${GO_TOOLSET_IMAGE} AS build
+
+# renovate: datasource=github-tags depName=david-igou/mcp-adc-exporter
+ARG MCP_ADC_EXPORTER_VERSION="v0.1.0"
+
+WORKDIR /opt/app-root/src
+RUN git clone --depth 1 --branch "${MCP_ADC_EXPORTER_VERSION}" https://github.com/david-igou/mcp-adc-exporter.git src && \
+    cd src && \
+    CGO_ENABLED=0 go build -trimpath \
+      -ldflags "-s -w -X main.version=${MCP_ADC_EXPORTER_VERSION} -X main.revision=$(git rev-parse --short HEAD)" \
+      -o ../mcp-adc-exporter .
+
+# The binary is fully static (pure Go, CGO off) — the runtime is just the
+# ubi-micro filesystem plus the exporter.
+FROM scratch
+
+COPY --from=target / /
+COPY --from=build /opt/app-root/src/mcp-adc-exporter /usr/local/bin/mcp-adc-exporter
+
+# Runtime needs the SPI character device passed through and readable, e.g.
+#   podman run --device /dev/spidev0.0 --group-add keep-groups \
+#     -v ./config.yaml:/etc/mcp-adc-exporter/config.yaml:ro,Z ...
+USER 1001
+EXPOSE 9958
+ENTRYPOINT ["/usr/local/bin/mcp-adc-exporter"]
+CMD ["-config", "/etc/mcp-adc-exporter/config.yaml"]
