@@ -455,7 +455,7 @@ cli = [
 
 [[package]]
 name = "mcp-server-git"
-version = "2026.6.16"
+version = "2026.7.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -463,9 +463,9 @@ dependencies = [
     { name = "mcp" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/90/0f/6e469dc1c3e23d4e92be7da4fea3c0c3896c015bd0e44034172f452ea137/mcp_server_git-2026.6.16.tar.gz", hash = "sha256:497273ca76122f163108c3a35095566be391af65b4674a9e088724ca018bd0d4", size = 65100, upload-time = "2026-06-17T19:17:50.812Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/93/c3/d05ce04b9438cef516283e0226db12436b80b6c36c89e67973bd175ffe6e/mcp_server_git-2026.7.10.tar.gz", hash = "sha256:95107b8b2989814e8c230e8e489feef4bfa4d80ca4a7ac1612cea05283ff5ea5", size = 64821, upload-time = "2026-07-10T03:31:05.027Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/60/9e1e5481a99eaa1af196c95fa29ff1d8563ab1c791b1cc49f2827513e796/mcp_server_git-2026.6.16-py3-none-any.whl", hash = "sha256:32e28dc64240d281f1a5ee310fe3da383769324233ea843d78899b57f291fb03", size = 10886, upload-time = "2026-06-17T19:17:49.322Z" },
+    { url = "https://files.pythonhosted.org/packages/04/f9/76758d8d863f4158023caef3f24de542808bf2e80b40eea190cb1aed14ec/mcp_server_git-2026.7.10-py3-none-any.whl", hash = "sha256:6eb8bb2cca00f39e7bf9752472268c2a037579d59d1373b2fb89cc606060fad5", size = 10936, upload-time = "2026-07-10T03:31:03.977Z" },
 ]
 
 [[package]]
@@ -518,7 +518,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "kubernetes-mcp-server", specifier = "==0.0.65" },
-    { name = "mcp-server-git", specifier = "==2026.6.16" },
+    { name = "mcp-server-git", specifier = "==2026.7.10" },
     { name = "mcp-server-time", specifier = "==2026.6.4" },
     { name = "mcpo", specifier = "==0.0.20" },
 ]
