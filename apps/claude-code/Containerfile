@@ -1,4 +1,4 @@
-ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:latest@sha256:864f6b94f9f64a059aed7dc8f95b0854f5eb06140f95aed32300da63a1f7877d
+ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:latest@sha256:9ae6ff53ac9fd3f06558278019d7eec370cbef59a413599b6e81bc39f65184c5
 ARG UBI_IMAGE_MICRO=registry.access.redhat.com/ubi10/ubi-micro:latest@sha256:af12ec115e0b0c19432cea2b826dea5b8d0d06f77f7c318aed93915b3233abea
 
 FROM ${UBI_IMAGE_MICRO} AS target
