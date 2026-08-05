@@ -1,4 +1,9 @@
 #!/bin/sh
 # podman fails hard on a missing XDG_RUNTIME_DIR (it lstats, never mkdirs);
-# /tmp is a tmpfs/emptyDir at runtime so the dir cannot be baked.
-mkdir -p "${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}"
+# /tmp is a tmpfs/emptyDir at runtime so the dir cannot be baked. cont-init
+# runs as root while podman runs as the (already remapped) hermes user, so
+# ownership must be handed over or podman gets EACCES on $dir/libpod.
+dir="${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}"
+mkdir -p "$dir"
+chown hermes "$dir"
+chmod 0700 "$dir"
