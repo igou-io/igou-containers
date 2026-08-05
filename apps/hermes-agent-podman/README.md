@@ -20,11 +20,14 @@ What the layer adds:
 
 - **apt**: podman, crun, fuse-overlayfs, uidmap (setuid newuidmap/newgidmap),
   passt + slirp4netns, catatonit (`podman run --init`)
-- **uid 1000 passwd entry** (`agent`) — deployments run the agent as uid
-  1000 per the SCC; podman resolves subuid ranges by name
 - **pod-userns-sized subuid/subgid**: ranges sized for a 65536-UID pod
-  namespace; the `hermes` (uid 10000) range is split around its own uid
-  because the kernel rejects overlapping uid_map extents
+  namespace, split around uid 10000 so they are valid for both the stock
+  `hermes` uid and an `HERMES_UID=1000` remap (the kernel rejects
+  overlapping uid_map extents). Run mode is upstream's contract: start as
+  container-root (unprivileged on the host under `hostUsers: false`) with
+  `HERMES_UID`/`HERMES_GID` set; the s6 bootstrap remaps the hermes user
+  and drops privileges — a pinned `runAsUser` is rejected by upstream
+  stage2 with "started with --user"
 - **storage.conf**: overlay via fuse-overlayfs (native overlay is
   unavailable to rootless podman in a pod userns)
 - **containers.conf**: `label = false` — pod-level userns + SELinux are the

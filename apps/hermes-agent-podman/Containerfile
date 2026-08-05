@@ -22,16 +22,14 @@ RUN apt-get -o Acquire::Retries=3 update && \
         uidmap && \
     rm -rf /var/lib/apt/lists/*
 
-# The deployment runs the agent as uid 1000 (SCC MustRunAs). podman resolves
-# subuid/subgid ranges by passwd name, so give uid 1000 an entry alongside
-# the base image's hermes (uid 10000). Ranges are sized for a pod user
-# namespace of exactly 65536 UIDs and must not overlap the owning uid
-# (the kernel rejects overlapping uid_map extents):
-#   agent  (1000):  0→1000, 1..63536→2000..65535
-#   hermes (10000): split around 10000 — 2000..9999 and 10001..65535
-RUN useradd -u 1000 -M -d /opt/data agent && \
-    printf 'agent:2000:63536\nhermes:2000:8000\nhermes:10001:55535\n' > /etc/subuid && \
-    printf 'agent:2000:63536\nhermes:2000:8000\nhermes:10001:55535\n' > /etc/subgid
+# The supported run mode is upstream's: start as container-root and let the
+# s6 bootstrap usermod the hermes user to HERMES_UID (a pre-created uid-1000
+# passwd entry breaks that remap with "UID already exists"). Subuid/subgid
+# ranges are sized for a pod user namespace of exactly 65536 UIDs and split
+# around uid 10000 so they overlap neither the stock hermes uid (10000) nor
+# a remapped one (1000) — the kernel rejects overlapping uid_map extents.
+RUN printf 'hermes:2000:8000\nhermes:10001:55535\n' > /etc/subuid && \
+    printf 'hermes:2000:8000\nhermes:10001:55535\n' > /etc/subgid
 
 COPY storage.conf containers.conf /etc/containers/
 
