@@ -1,0 +1,57 @@
+# Official Hermes Agent image with a nested rootless podman stack layered on
+# top, so the terminal backend (terminal.backend: docker driven via
+# HERMES_DOCKER_BINARY=podman) can run inside an unprivileged user-namespaced
+# pod (OpenShift 4.21+ hostUsers: false). Pairs with the SCC and deployment in
+# igou-openshift/test-workloads/hermes-nested-podman.
+ARG HERMES_IMAGE=docker.io/nousresearch/hermes-agent:v2026.8.3@sha256:16788311e2fa3035456bdc1bafb8ec2b1777db64ebf020af9bb7eb73c3712c9e
+
+FROM ${HERMES_IMAGE}
+
+# Nested-container stack (base is Debian 13): rootless podman + crun,
+# fuse-overlayfs storage (native overlay is unavailable to rootless podman
+# inside a pod userns), setuid newuidmap/newgidmap from uidmap, pasta +
+# slirp4netns rootless networking, catatonit for podman run --init.
+RUN apt-get -o Acquire::Retries=3 update && \
+    apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+        catatonit \
+        crun \
+        fuse-overlayfs \
+        podman \
+        passt \
+        slirp4netns \
+        uidmap && \
+    rm -rf /var/lib/apt/lists/*
+
+# The deployment runs the agent as uid 1000 (SCC MustRunAs). podman resolves
+# subuid/subgid ranges by passwd name, so give uid 1000 an entry alongside
+# the base image's hermes (uid 10000). Ranges are sized for a pod user
+# namespace of exactly 65536 UIDs and must not overlap the owning uid
+# (the kernel rejects overlapping uid_map extents):
+#   agent  (1000):  0→1000, 1..63536→2000..65535
+#   hermes (10000): split around 10000 — 2000..9999 and 10001..65535
+RUN useradd -u 1000 -M -d /opt/data agent && \
+    printf 'agent:2000:63536\nhermes:2000:8000\nhermes:10001:55535\n' > /etc/subuid && \
+    printf 'agent:2000:63536\nhermes:2000:8000\nhermes:10001:55535\n' > /etc/subgid
+
+COPY storage.conf containers.conf /etc/containers/
+
+# Hermes hardcodes --tmpfs flags in _BASE_SECURITY_ARGS whose copy-up
+# preserves image SELinux xattrs — fsetxattr is always denied inside a user
+# namespace, so nested containers exit 126. Append notmpcopyup to all four
+# tmpfs sites. The count check fails the build if a base image bump moves or
+# reworks the flags, so the patch can never rot silently.
+RUN sed -i \
+        -e 's|/tmp:rw,nosuid,size=512m|/tmp:rw,nosuid,size=512m,notmpcopyup|' \
+        -e 's|/var/tmp:rw,noexec,nosuid,size=256m|/var/tmp:rw,noexec,nosuid,size=256m,notmpcopyup|' \
+        -e 's|/run:rw,noexec,nosuid,size=64m|/run:rw,noexec,nosuid,size=64m,notmpcopyup|' \
+        -e 's|/run:rw,exec,nosuid,size=64m|/run:rw,exec,nosuid,size=64m,notmpcopyup|' \
+        /opt/hermes/tools/environments/docker.py && \
+    test "$(grep -c notmpcopyup /opt/hermes/tools/environments/docker.py)" -eq 4
+
+# podman fails hard on a missing XDG_RUNTIME_DIR; /tmp is an emptyDir or
+# tmpfs at runtime, so the dir is created by a cont-init script (official
+# s6 entrypoint) — deployments that override the entrypoint must mkdir it.
+COPY --chmod=0755 01-xdg-runtime-dir /etc/cont-init.d/01-xdg-runtime-dir
+
+ENV HERMES_DOCKER_BINARY=/usr/bin/podman \
+    XDG_RUNTIME_DIR=/tmp/xdg-runtime
