@@ -1,0 +1,93 @@
+# Official Hermes Agent image + the `kubernetes` terminal backend from our fork
+# (david-igou/hermes-agent, a port of upstream PR #37591 re-scoped to
+# config.yaml). The backend execs each agent command into a per-session
+# Kubernetes pod instead of running it in the agent's own container.
+#
+# Layered rather than built from source: the backend is pure Python, so copying
+# the ~19 changed modules onto the published image keeps builds at ~2 minutes
+# instead of the 15-45 the upstream 5-stage Dockerfile takes (sqlite from
+# source, npm, playwright, ffmpeg, uv sync, web build).
+ARG HERMES_IMAGE=docker.io/nousresearch/hermes-agent:v2026.8.3@sha256:16788311e2fa3035456bdc1bafb8ec2b1777db64ebf020af9bb7eb73c3712c9e
+
+FROM registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:b217fa65d8c21058887b18f005f587e47a17dd1281a5196ac88d01724a273dbd AS source
+
+# renovate: datasource=git-refs depName=https://github.com/david-igou/hermes-agent branch=feat/kubernetes-terminal-backend
+ARG HERMES_FORK_REF=e3c04ed4fd1434c5f5c4f5cbab1eaf46f49f6b65
+ARG HERMES_FORK_REPO=https://github.com/david-igou/hermes-agent.git
+
+RUN microdnf install -y --setopt=install_weak_deps=0 --nodocs git \
+    && microdnf clean all
+RUN git clone --filter=blob:none --no-checkout "${HERMES_FORK_REPO}" /src \
+    && cd /src \
+    && git fetch --depth 1 origin "${HERMES_FORK_REF}" \
+    && git checkout --detach "${HERMES_FORK_REF}"
+
+FROM ${HERMES_IMAGE}
+
+# The kubernetes client is an optional extra in the fork's pyproject; install it
+# explicitly because check_terminal_requirements() gates the whole terminal tool
+# on it being importable (there is deliberately no lazy install for this backend).
+# renovate: datasource=pypi depName=kubernetes
+ARG KUBERNETES_CLIENT_VERSION=36.0.3
+
+USER root
+
+# Only the runtime delta. The image tag and the fork's main have drifted (386
+# files), so copying whole packages would drag unrelated upstream changes into a
+# tree whose venv and web dist were built at v2026.8.3; the import check below
+# fails the build loudly if even this narrow set is incoherent.
+COPY --from=source /src/agent/prompt_builder.py            /opt/hermes/agent/prompt_builder.py
+COPY --from=source /src/cli.py                             /opt/hermes/cli.py
+COPY --from=source /src/gateway/run.py                     /opt/hermes/gateway/run.py
+COPY --from=source /src/hermes_cli/config.py               /opt/hermes/hermes_cli/config.py
+COPY --from=source /src/hermes_cli/config_defaults.py      /opt/hermes/hermes_cli/config_defaults.py
+COPY --from=source /src/hermes_cli/doctor.py               /opt/hermes/hermes_cli/doctor.py
+COPY --from=source /src/hermes_cli/setup.py                /opt/hermes/hermes_cli/setup.py
+COPY --from=source /src/hermes_cli/status.py               /opt/hermes/hermes_cli/status.py
+COPY --from=source /src/hermes_cli/web_server.py           /opt/hermes/hermes_cli/web_server.py
+COPY --from=source /src/tools/approval.py                  /opt/hermes/tools/approval.py
+COPY --from=source /src/tools/code_execution_tool.py       /opt/hermes/tools/code_execution_tool.py
+COPY --from=source /src/tools/env_probe.py                 /opt/hermes/tools/env_probe.py
+COPY --from=source /src/tools/file_operations.py           /opt/hermes/tools/file_operations.py
+COPY --from=source /src/tools/file_tools.py                /opt/hermes/tools/file_tools.py
+COPY --from=source /src/tools/lazy_deps.py                 /opt/hermes/tools/lazy_deps.py
+COPY --from=source /src/tools/skills_tool.py               /opt/hermes/tools/skills_tool.py
+COPY --from=source /src/tools/terminal_tool.py             /opt/hermes/tools/terminal_tool.py
+COPY --from=source /src/tools/environments/__init__.py     /opt/hermes/tools/environments/__init__.py
+COPY --from=source /src/tools/environments/kubernetes.py   /opt/hermes/tools/environments/kubernetes.py
+# Deployment samples (RBAC / NetworkPolicy / admission policy), for reference
+# inside the image; not consumed at runtime.
+COPY --from=source /src/k8s/                               /opt/hermes/k8s/
+
+RUN uv pip install --python /opt/hermes/.venv/bin/python \
+        "kubernetes==${KUBERNETES_CLIENT_VERSION}" \
+    && chown -R 10000:10000 /opt/hermes/k8s
+
+# Fail the build if the delta is incoherent with this image tag. Imports the
+# modules that were replaced, asserts the backend registered, and renders a
+# default pod template through the real code path.
+RUN /opt/hermes/.venv/bin/python - <<'PY'
+import sys
+sys.path.insert(0, "/opt/hermes")
+import kubernetes  # noqa: F401
+from tools.environments.kubernetes import (
+    KubernetesEnvironment, build_pod_template, unhardened_reasons,
+    validate_kubernetes_config, Resources,
+)
+from hermes_cli.config_defaults import DEFAULT_CONFIG
+import tools.terminal_tool as tt
+import agent.prompt_builder  # noqa: F401
+import tools.approval  # noqa: F401
+
+kcfg = DEFAULT_CONFIG["terminal"]["kubernetes"]
+assert kcfg, "terminal.kubernetes missing from DEFAULT_CONFIG"
+assert not validate_kubernetes_config(kcfg), validate_kubernetes_config(kcfg)
+assert "kubernetes" in tt._CONTAINER_BACKENDS, tt._CONTAINER_BACKENDS
+tmpl = build_pod_template(kcfg, persistent=False, image="busybox",
+                          resources=Resources(), pvc_name="smoke")
+assert tmpl["spec"]["containers"], tmpl
+assert unhardened_reasons(kcfg) == [], unhardened_reasons(kcfg)
+print("smoke: kubernetes backend wired, default pod template hardened")
+PY
+
+USER 10000
