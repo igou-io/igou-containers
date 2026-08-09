@@ -75,7 +75,7 @@ ARG VIRTCTL_VERSION="v1.8.4"
 # renovate: datasource=github-releases depName=yannh/kubeconform
 ARG KUBECONFORM_VERSION="v0.8.0"
 # renovate: datasource=github-releases depName=tektoncd/cli
-ARG TKN_VERSION="v0.45.0"
+ARG TKN_VERSION="v0.45.1"
 # renovate: datasource=github-releases depName=rclone/rclone
 ARG RCLONE_VERSION="v1.74.4"
 # renovate: datasource=github-releases depName=containers/kubernetes-mcp-server
@@ -173,7 +173,7 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/workspace && \
 FROM ${UBI_IMAGE} AS opencode-build
 
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.*)$
-ARG OPENCODE_VERSION="1.18.4"
+ARG OPENCODE_VERSION="1.18.9"
 
 RUN dnf install -y curl tar gzip && \
     groupadd -g 1000 igou 2>/dev/null || true && \
