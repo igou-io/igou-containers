@@ -83,7 +83,7 @@ ARG VIRTCTL_VERSION="v1.8.4"
 # renovate: datasource=github-releases depName=yannh/kubeconform
 ARG KUBECONFORM_VERSION="v0.8.0"
 # renovate: datasource=github-releases depName=tektoncd/cli
-ARG TKN_VERSION="v0.45.0"
+ARG TKN_VERSION="v0.45.1"
 # renovate: datasource=github-releases depName=rclone/rclone
 ARG RCLONE_VERSION="v1.74.4"
 # renovate: datasource=github-releases depName=containers/kubernetes-mcp-server
