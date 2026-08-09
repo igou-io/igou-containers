@@ -79,7 +79,7 @@ ARG ARGOCD_VERSION="v3.4.5"
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.*)$
 ARG KUSTOMIZE_VERSION="v5.8.1"
 # renovate: datasource=github-releases depName=kubevirt/kubevirt
-ARG VIRTCTL_VERSION="v1.8.4"
+ARG VIRTCTL_VERSION="v1.9.0"
 # renovate: datasource=github-releases depName=yannh/kubeconform
 ARG KUBECONFORM_VERSION="v0.8.0"
 # renovate: datasource=github-releases depName=tektoncd/cli
