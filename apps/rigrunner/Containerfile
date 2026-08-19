@@ -1,0 +1,7 @@
+# Rig Runner - single-file canvas platformer, served as static content.
+# nginx-unprivileged listens on 8080 and runs as a non-root user out of the
+# box, which satisfies the arbitrary-UID convention without an s2i toolchain
+# (there is no UBI static-file image that avoids one).
+FROM docker.io/nginxinc/nginx-unprivileged:stable-alpine@sha256:44e36330f74d4f3a1d4e222acca9e23b401fb87811a7597024502bb759c4dd49
+
+COPY index.html /usr/share/nginx/html/index.html

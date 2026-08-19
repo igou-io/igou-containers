@@ -115,6 +115,15 @@ Sandbox config baked at `/etc/cursor/sandbox.json` with network deny-by-default 
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
 - `FROM` lines — UBI base image digests (dockerfile manager)
 
+### rigrunner / fangche-runner
+
+Static single-file browser games (Rig Runner and 房车 RUNNER), each an `index.html` vendored into the app directory and served by `nginx-unprivileged:stable-alpine` (listens on 8080, non-root out of the box — the one deliberate deviation from the UBI base convention, since UBI's nginx images require an s2i toolchain for a single static file). Deployed as rootless quadlets on the igou.io VPS at `rigrunner.igou.io` / `fangche.igou.io` (see `igou-inventory/host_vars/igou.io.yml`).
+
+Vendoring is intentional: rigrunner's source of truth is the `rigrunner-fable` parts assembly (workspace scratch), and fangche-runner lives on lab-internal Forgejo (`sandbox/fangche-runner`) which GitHub Actions cannot reach. To update a game, replace its `index.html` here.
+
+**Dependencies managed by Renovate:**
+- `FROM` lines — nginx-unprivileged digest (dockerfile manager)
+
 ### zfs-exporter
 
 [pdf/zfs_exporter](https://github.com/pdf/zfs_exporter) plus the OpenZFS userland CLI on UBI 10 minimal, for Prometheus monitoring of the TrueNAS host (#81). Three-stage build:
