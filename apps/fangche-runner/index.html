@@ -1,0 +1,3877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>房车 RUNNER</title>
+<style>
+  :root{ --bg:#0b0e14; }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{ height:100%; background:var(--bg); overflow:hidden; }
+  body{
+    font-family:'Segoe UI',system-ui,sans-serif;
+    color:#e8eef7;
+    display:flex; align-items:center; justify-content:center;
+    -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    touch-action:none;
+  }
+  #wrap{ position:relative; width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; }
+  canvas#game{
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+    background:#0b0e14;
+    box-shadow:0 0 0 2px #223, 0 24px 80px rgba(0,0,0,.7);
+    border-radius:3px;
+  }
+  /* Touch controls: only shown on touch devices */
+  #touch{ position:absolute; inset:0; pointer-events:none; display:none; }
+  .tbtn{
+    position:absolute; pointer-events:auto;
+    background:rgba(20,26,40,.55); border:2px solid rgba(160,200,255,.35);
+    border-radius:50%; color:#cfe4ff; font-weight:800;
+    display:flex; align-items:center; justify-content:center;
+    backdrop-filter:blur(2px);
+    user-select:none; -webkit-user-select:none;
+    font-size:20px;
+  }
+  .tbtn:active{ background:rgba(60,110,180,.6); }
+  #dpad{ left:16px; bottom:18px; width:150px; height:150px; }
+  #tp-left{ left:0; bottom:34px; width:56px; height:56px; }
+  #tp-right{ right:0; bottom:34px; width:56px; height:56px; }
+  #tp-down{ left:47px; bottom:0; width:56px; height:56px; }
+  #tjump{ right:20px; bottom:60px; width:76px; height:76px; background:rgba(120,80,20,.5); border-color:rgba(255,200,120,.5); }
+  #twrench{ right:104px; bottom:20px; width:64px; height:64px; background:rgba(20,60,120,.5); }
+  #trun{ right:20px; bottom:150px; width:56px; height:56px; background:rgba(20,80,60,.5); border-color:rgba(120,255,200,.4); }
+  .tlabel{ font-size:12px; line-height:1; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="512" height="288"></canvas>
+  <div id="touch">
+    <div id="dpad"></div>
+    <div class="tbtn" id="tp-left">◀</div>
+    <div class="tbtn" id="tp-right">▶</div>
+    <div class="tbtn" id="tp-down">▼</div>
+    <div class="tbtn" id="tjump">A<br><span class="tlabel">JUMP</span></div>
+    <div class="tbtn" id="twrench">B<br><span class="tlabel">WR</span></div>
+    <div class="tbtn" id="trun">RUN</div>
+  </div>
+</div>
+<script>
+"use strict";
+/* =========================================================================
+   房车 RUNNER — single-file 2D platformer
+   Sections:
+     CONFIG / CONSTANTS
+     AUDIO (staged)
+     INPUT (keyboard + touch)
+     CAMERA
+     LEVEL FORMAT & TILES
+     PHYSICS / PLAYER
+     ENTITY SYSTEM (staged)
+     LEVELS DATA (staged)
+     RENDER
+     SCREENS / HUD (staged)
+     GAME STATE & MAIN LOOP
+   ========================================================================= */
+
+// ===== SECTION: CONFIG =============================================
+const TILE = 16;
+const VIEW_W = 512, VIEW_H = 288;
+const SCREEN_TILES_W = VIEW_W / TILE;   // 32
+const SCREEN_TILES_H = VIEW_H / TILE;   // 18
+
+// Physics tuned to targets: full jump ~4.5 tiles up, ~6 tiles far at run.
+const GRAVITY      = 0.55;
+const JUMP_V       = 9.05;   // -> apex ~70px (~4.4 tiles discrete; ~4.5 with hang)
+const JUMP_CUT     = 0.42;   // variable-jump velocity cap on early release
+const WALK_SPEED   = 1.55;
+const RUN_SPEED    = 3.05;
+const ACCEL        = 0.30;
+const SKID_ACCEL   = 0.55;   // quick turnaround
+const FRICTION     = 0.22;
+const AIR_ACCEL    = 0.28;
+const AIR_FRICTION = 0.04;
+const MAX_FALL     = 9.5;
+const COYOTE_FRAMES = 5;     // ~90ms at 60fps
+const JUMPBUF_FRAMES= 8;     // ~120-130ms at 60fps (press survives landing)
+const CROUCH_H     = 8;
+const STOMP_BOUNCE = 5.2;
+const BOUNCE_PAD_V = 11.5;
+const SWING_FRAMES = 10;     // wrench swing active window (impact driver halves it)
+const ARC_COST     = 18;     // anode-meter cost per arc-flash
+const ARC_SPEED    = 4.6;
+const ARC_GRAV     = 0.22;   // gentle Mario-fireball arc
+const SLIDE_SPEED  = 4.7;
+
+const CJK_FONT = "8px 'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Source Han Sans SC',sans-serif";
+const CJK_FONT_L = "10px 'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Source Han Sans SC',sans-serif";
+const PIX_FONT = "8px monospace";
+
+// ===== SECTION: AUDIO — synthesized chiptune + SFX (Web Audio, original melodies)
+const _NOTE_SEMI = {C:0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,F:5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11};
+function noteHz(n){ const m=/^([A-G][#b]?)(\d)$/.exec(n); if(!m) return 0; return 440*Math.pow(2,((+m[2]-4)*12 + _NOTE_SEMI[m[1]] - 9)/12); }
+
+// Seven original zone themes (pentatonic/mode based, no copyrighted material).
+// lead+bass are 1-bar 16th-note lines; numeric 0 = rest (chiptune square/triangle).
+const SONGS = {
+ 1:{ b:138, lw:'square',lv:0.12, bw:'triangle',bv:0.20, hat:false,
+    lead:['A4',0,'C#5',0,'E5',0,'C#5','A4','B4','C#5','E5',0,'F#5',0,'E5','C#5'],
+    bass:['A2','A3','A2','A3','A2','A3','A2','A3','F#2','F#3','F#2','F#3','E2','E3','E2','E3']},
+ 2:{ b:126, lw:'square',lv:0.12, bw:'triangle',bv:0.20, hat:false,
+    lead:['G4',0,'D4',0,'B4',0,'G4','E4','G4',0,'B4',0,'D5',0,'B4','D4'],
+    bass:['E2','E3','E2','E3','B2','B3','B2','B3','G2','G3','G2','G3','A2','A3','A2','A3']},
+ 3:{ b:132, lw:'square',lv:0.12, bw:'sawtooth',bv:0.15, hat:false,
+    lead:['D4',0,'F4','D4','E4',0,'D4','Bb3','C4',0,'E4',0,'C5',0,'Bb4','A4'],
+    bass:['D2','D3','D2','D3','D2','D3','D2','D3','C2','C3','C2','C3','Bb2','Bb3','Bb2','Bb3']},
+ 4:{ b:146, lw:'square',lv:0.11, bw:'triangle',bv:0.19, hat:false,
+    lead:['C5',0,'F4',0,'F4','G4','A4','B4','C5',0,'B4','A4','G4',0,'F4','D4'],
+    bass:['F2','F3','F2','F3','F2','F3','F2','F3','C2','C3','C2','C3','D2','D3','D2','D3']},
+ 5:{ b:118, lw:'triangle',lv:0.15, bw:'sine',bv:0.24, hat:false,
+    lead:['B4',0,0,'G4',0,0,'D5',0,'E5',0,0,'D5','B4',0,'G4',0],
+    bass:['G2',0,'G3',0,'G2',0,'G3',0,'D2',0,'D3',0,'D2',0,'D3',0]},
+ 6:{ b:150, lw:'square',lv:0.12, bw:'sawtooth',bv:0.17, hat:true,
+    lead:['C5',0,0,0,'Bb4','F4',0,0,'Eb4',0,'G4',0,'C5',0,0,0],
+    bass:['C2','C3','C2','C3','Bb2','Bb3','Bb2','Bb3','G2','G3','G2','G3','Bb2','Bb3','Bb2','Bb3']},
+ 7:{ b:166, lw:'square',lv:0.12, bw:'sawtooth',bv:0.18, hat:true,
+    lead:['A4',0,'C5','A4','E5','C5','A4','G4','A4',0,'C5',0,'E5',0,0,0],
+    bass:['A2','A3','A2','A3','A2','A3','A2','A3','F2','F3','F2','F3','G2','G3','G2','G3']},
+};
+
+const AudioEngine = {
+  ready:false, muted:false, master:null, ctx:null,
+  _song:null, _step:0, _next:0, _timer:null,
+  init(){
+    if(this.ready) return;
+    const AC = (typeof window!=='undefined') && (window.AudioContext||window.webkitAudioContext);
+    if(!AC){ this.ready=false; return; }   // headless (no AudioContext): stay silent, no crash
+    try{
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = this.muted?0:0.85;
+      this.master.connect(this.ctx.destination);
+      if(this.ctx.state==='suspended') this.ctx.resume();
+      this.ready = true;
+    }catch(e){ this.ready=false; }
+  },
+  _t(){ return this.ctx? this.ctx.currentTime : 0; },
+  _tone(freq,type,t0,dur,vol){
+    if(!this.ctx||freq<=0) return;
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(freq,t0);
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(vol,t0+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t0); o.stop(t0+dur+0.03);
+  },
+  _slide(f0,f1,type,t0,dur,vol){
+    if(!this.ctx) return;
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(Math.max(20,f0),t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t0+dur);
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(vol,t0+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t0); o.stop(t0+dur+0.03);
+  },
+  _noise(t0,dur,vol,band){
+    if(!this.ctx) return;
+    const n=Math.max(1,(this.ctx.sampleRate*dur)|0);
+    const buf=this.ctx.createBuffer(1,n,this.ctx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+    const src=this.ctx.createBufferSource(); src.buffer=buf;
+    const fl=this.ctx.createBiquadFilter(); fl.type= band? 'bandpass':'lowpass'; fl.frequency.value=band||800; fl.Q.value=0.8;
+    const g=this.ctx.createGain(); g.gain.value=vol;
+    src.connect(fl); fl.connect(g); g.connect(this.master);
+    src.start(t0);
+  },
+  _hat(t0){ this._noise(t0,0.03,0.05,8000); },
+  sfx(name){ if(!this.ready) return; const fn=SFX[name]; if(fn) fn(this,this._t()); },
+  music(zone){
+    this.stopMusic();
+    if(!this.ready) return;
+    const s=SONGS[zone]||SONGS[1];
+    this._song=s; this._step=0; this._next=this._t()+0.08;
+    const step=60/s.b/4, dur=step*0.92;
+    const tick=()=>{
+      const sg=this._song;
+      if(!sg || !this.ready){ this._timer=null; return; }
+      const hor=this._t()+0.16;
+      while(this._next<hor){
+        const i=this._step, t=this._next;
+        const L=sg.lead[i]; if(L) this._tone(noteHz(L),sg.lw,t,dur,sg.lv);
+        const B=sg.bass[i]; if(B) this._tone(noteHz(B),sg.bw,t,dur,sg.bv);
+        if(sg.hat && i%4===2) this._hat(t);
+        this._step=(i+1)%sg.lead.length;
+        this._next+=step;
+      }
+      this._timer=setTimeout(tick,50);
+    };
+    this._timer=setTimeout(tick,50);
+  },
+  stopMusic(){ if(this._timer){ clearTimeout(this._timer); this._timer=null; } this._song=null; },
+  setMute(m){ this.muted=!!m; if(this.master) this.master.gain.value = this.muted?0:0.85; }
+};
+
+// SFX: name -> play(engine, nowTime). All synthesized, tuned for a 2D platformer.
+const SFX = {
+  jump:(e,t)=>e._slide(300,660,'square',t,0.13,0.14),
+  bounce:(e,t)=>e._slide(420,760,'square',t,0.1,0.11),
+  slide:(e,t)=>{e._noise(t,0.4,0.11,1400); e._slide(620,160,'sawtooth',t,0.36,0.05);},
+  dash:(e,t)=>e._slide(220,980,'square',t,0.16,0.11),
+  anode:(e,t)=>{e._tone(1318,'sine',t,0.16,0.13); e._tone(1976,'sine',t+0.03,0.14,0.07);},
+  power2:(e,t)=>{e._slide(180,1400,'sawtooth',t,0.42,0.12); e._tone(1318,'square',t+0.2,0.18,0.09);},
+  life:(e,t)=>{e._tone(880,'sine',t,0.18,0.13); e._tone(1175,'sine',t+0.1,0.24,0.11);},
+  checkpoint:(e,t)=>{e._tone(988,'square',t,0.07,0.11); e._tone(1480,'square',t+0.08,0.12,0.11);},
+  order:(e,t)=>{e._tone(659,'square',t,0.08,0.12); e._tone(880,'square',t+0.09,0.12,0.12);},
+  reward:(e,t)=>{[1046,1318,1568].forEach((f,i)=>e._tone(f,'square',t+i*0.07,0.14,0.1));},
+  charge:(e,t)=>e._slide(280,1250,'sawtooth',t,0.5,0.11),
+  shield:(e,t)=>{e._tone(220,'sine',t,0.24,0.15); e._tone(330,'sine',t+0.05,0.2,0.09);},
+  slam:(e,t)=>{e._slide(190,70,'square',t,0.18,0.15); e._noise(t,0.12,0.1,520);},
+  break:(e,t)=>{e._noise(t,0.18,0.13,2200); e._tone(320,'square',t,0.09,0.09); e._tone(240,'square',t+0.05,0.1,0.07);},
+  impact:(e,t)=>{e._tone(140,'sine',t,0.12,0.15); e._noise(t,0.08,0.09,640);},
+  clang:(e,t)=>{e._tone(520,'square',t,0.13,0.13); e._tone(784,'square',t+0.02,0.1,0.08); e._noise(t,0.04,0.05,3000);},
+  wrench:(e,t)=>{e._tone(880,'square',t,0.05,0.09); e._noise(t,0.03,0.05,4200);},
+  arc:(e,t)=>{e._slide(2400,420,'sawtooth',t,0.18,0.1); e._noise(t,0.1,0.08,2600);},
+  trip:(e,t)=>{e._tone(1200,'square',t,0.04,0.11); e._tone(600,'square',t+0.05,0.06,0.1); e._noise(t,0.06,0.05,1600);},
+  spark:(e,t)=>{e._tone(1800,'square',t,0.04,0.08); e._tone(1250,'square',t+0.03,0.05,0.06);},
+  hurt:(e,t)=>{e._slide(420,150,'square',t,0.18,0.15); e._noise(t,0.1,0.08,900);},
+  death:(e,t)=>{e._tone(120,'sine',t,0.5,0.2); e._noise(t,0.42,0.15,420); e._slide(320,60,'sawtooth',t,0.4,0.11);},
+  kill:(e,t)=>{e._slide(420,120,'square',t,0.15,0.13); e._tone(1318,'sine',t+0.05,0.12,0.1);},
+  boom:(e,t)=>{e._noise(t,0.6,0.2,300); e._tone(80,'sine',t,0.5,0.18); e._slide(400,50,'sawtooth',t,0.5,0.11);},
+  gas:(e,t)=>{e._noise(t,0.5,0.16,1200); e._slide(320,120,'sawtooth',t,0.4,0.07);},
+  hiss:(e,t)=>e._noise(t,0.4,0.12,1900),
+  pop:(e,t)=>{e._noise(t,0.12,0.16,920); e._slide(520,200,'square',t,0.1,0.1);},
+  drip:(e,t)=>{e._tone(900,'sine',t,0.05,0.1); e._tone(600,'sine',t+0.04,0.06,0.08);},
+  flood:(e,t)=>e._noise(t,0.8,0.12,620),
+  gust:(e,t)=>e._noise(t,0.6,0.1,520),
+  rockfall:(e,t)=>{e._noise(t,0.5,0.16,420); e._tone(90,'sine',t,0.3,0.12);},
+  frost:(e,t)=>{e._tone(2200,'sine',t,0.15,0.08); e._tone(2870,'sine',t+0.08,0.15,0.06);},
+  frostbreak:(e,t)=>{e._noise(t,0.1,0.09,3000); e._tone(1500,'square',t,0.08,0.08);},
+  tear:(e,t)=>e._noise(t,0.15,0.09,2000),
+  splat:(e,t)=>e._noise(t,0.2,0.12,720),
+  paper:(e,t)=>e._noise(t,0.12,0.08,3200),
+  park:(e,t)=>e._tone(440,'square',t,0.05,0.1),
+  valve:(e,t)=>{e._tone(300,'square',t,0.06,0.1); e._tone(360,'square',t+0.08,0.06,0.1); e._noise(t,0.05,0.04,1500);},
+  hatch:(e,t)=>{e._noise(t,0.2,0.1,1200); e._slide(200,520,'square',t,0.15,0.08);},
+  seal:(e,t)=>{e._tone(220,'sine',t,0.1,0.12); e._noise(t,0.08,0.05,820);},
+  cap:(e,t)=>{e._tone(659,'square',t,0.08,0.12); e._tone(988,'square',t+0.06,0.1,0.1);},
+  chatter:(e,t)=>{for(let i=0;i<5;i++) e._tone(700+i*60,'square',t+i*0.03,0.03,0.06);},
+  qrgate:(e,t)=>{e._tone(880,'sine',t,0.1,0.12); e._tone(1318,'sine',t+0.08,0.14,0.1); e._tone(1760,'sine',t+0.18,0.2,0.08);},
+  qrbuzz:(e,t)=>{e._tone(110,'sawtooth',t,0.3,0.12); e._tone(220,'square',t,0.3,0.06);},
+};
+
+// ===== SECTION: INPUT =============================================
+const Input = {
+  keys:{},
+  // logical states
+  left:false,right:false,up:false,down:false,
+  jump:false,jumpPrev:false,
+  wrench:false,wrenchPrev:false,
+  run:false, action:false,
+  jumpBuffered:false,
+  isTouch:false,
+  init(){
+    window.addEventListener('keydown', e=>this.onKey(e,true));
+    window.addEventListener('keyup', e=>this.onKey(e,false));
+    // touch detection
+    this.isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints>0);
+    if(this.isTouch) wireTouch();
+    // prevent page scroll on arrows/space
+    window.addEventListener('keydown', e=>{
+      if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    });
+  },
+  mapKey(code){
+    switch(code){
+      case 'ArrowLeft': case 'KeyA': return 'left';
+      case 'ArrowRight': case 'KeyD': return 'right';
+      case 'ArrowUp': case 'KeyW': return 'up';
+      case 'ArrowDown': case 'KeyS': return 'down';
+      case 'Space': case 'KeyZ': return 'jump';
+      case 'KeyX': case 'KeyJ': return 'wrench';
+      case 'ShiftLeft': case 'ShiftRight': case 'ControlLeft': return 'run';
+      case 'Enter': return 'pause';
+      case 'KeyM': return 'mute';
+    }
+    return null;
+  },
+  onKey(e,down){
+    const k=this.mapKey(e.code);
+    if(!k) return;
+    this.keys[k]=down;
+    if(k==='left') this.left=down;
+    if(k==='right') this.right=down;
+    if(k==='up') this.up=down;
+    if(k==='down') this.down=down;
+    if(k==='jump'){ if(down) this.jumpBuffered=true; this.jump=down; }
+    if(k==='wrench') this.wrench=down;
+    if(k==='run') this.run=down;
+      if(k==='pause' && down) onPauseToggle();
+      if(k==='mute' && down) AudioEngine.setMute(!AudioEngine.muted);
+  },
+  // called by touch handlers
+  setTouchState(obj){
+    if(obj.left) this.left=true;
+    if(obj.right) this.right=true;
+    if(obj.down) this.down=true;
+    if(obj.run) this.run=true;
+    if(obj.jump){ if(!this.jump) this.jumpBuffered=true; this.jump=true; }
+    if(obj.wrench) this.wrench=true;
+  },
+  endTouchState(obj){
+    if(obj.left) this.left=false;
+    if(obj.right) this.right=false;
+    if(obj.down) this.down=false;
+    if(obj.run) this.run=false;
+    if(obj.jump) this.jump=false;
+    if(obj.wrench) this.wrench=false;
+  },
+  update(){
+    // edge detect jump / wrench for one-shot consumers
+    this.jumpJustPressed = this.jumpBuffered;
+    this.jumpBuffered = false;
+    this.wrenchJustPressed = this.wrench && !this.wrenchPrev;
+    this.wrenchPrev = this.wrench;
+  },
+  consumeJumpBuffer(){ this.jumpBuffered=false; }
+};
+function wireTouch(){
+  document.getElementById('touch').style.display='block';
+  const bind=(id,key)=>{
+    const el=document.getElementById(id);
+    const on=(e)=>{e.preventDefault(); Input.setTouchState({[key]:true});};
+    const off=(e)=>{e.preventDefault(); Input.endTouchState({[key]:false});};
+    el.addEventListener('touchstart',on,{passive:false});
+    el.addEventListener('touchend',off,{passive:false});
+    el.addEventListener('touchcancel',off,{passive:false});
+  };
+  bind('tp-left','left'); bind('tp-right','right'); bind('tp-down','down');
+  bind('tjump','jump'); bind('twrench','wrench'); bind('trun','run');
+}
+
+// ===== SECTION: CAMERA ===========================================
+const Camera = {
+  x:0, y:0,
+  lookAhead:0,
+  deadW:64, deadH:24,
+  update(px,py,pw,ph,levelW,levelH){
+    const targetX = px + pw/2 - VIEW_W/2 + this.lookAhead;
+    const targetY = py + ph/2 - VIEW_H/2;
+    // horizontal soft follow with dead-zone
+    let dx = targetX - this.x;
+    if(Math.abs(dx) > this.deadW*0.5) this.x += dx*0.12;
+    else this.x += dx*0.06;
+    // look-ahead easing
+    const la = (Game.player?Game.player.facing:1) * 26;
+    this.lookAhead += (la - this.lookAhead)*0.08;
+    this.x = Math.max(0, Math.min(levelW - VIEW_W, this.x));
+    this.y = Math.max(0, Math.min(levelH - VIEW_H, targetY));
+    this.y = Math.round(this.y); this.x = Math.round(this.x - this.lookAhead);
+  }
+};
+
+// ===== SECTION: LEVEL FORMAT & TILES ===========================
+// Tile legend (single char per cell)
+//  ' ' empty   '#' solid block    'B' brick/wood block  '?' storage bay hatch
+//  '^' oneway platform (awning)  '=' oneway solid top   'A' bounce pad (table)
+//  'R' ramp (launch)             '~' water (decor/zone1)  '.' decorative
+// Stage 4 hazards: 'W' wiring bridge (solid, chewed by mice / wrenchable)
+//  'o' window (wrench opens it, vents gas clouds)  'V' open vent (drips goblins)
+//  'v' capped vent   'H' HV orange line (breaker-trip, zone 3+)
+//  'h' water heater (thaws freeze wraith)   'Q' frozen-brittle platform (1 step)
+// Stage 5 zone gimmicks:
+//  'S' rooftop solar array (one-way, slides you along the roof line)
+//  'G' EV charge-pad floor (solid; recharges arc meter, builds regen dash)
+//  'C' charging cable vine (climb with Up while overlapping)
+//  'U' hot-pot steam updraft (boosts jump height in its column)
+//  'L' lantern rope (holdable glide line in gusty night-market air)
+//  'q' QR toll-gate door (solid; scan from close with X to open the run)
+//  'K' sea-freight parts crate (solid; wrench it for imported parts)
+// Legend is per-level palette-able.
+const Tile = { SOLID:'#BXWQGqK', ONEWAY:'^=S', BOUNCE:'A' };
+function makeLevel(def){
+  const rows = def.map;
+  const h = rows.length, w = Math.max(...rows.map(r=>r.length));
+  const grid = [];
+  for(let y=0;y<h;y++){
+    const line = rows[y];
+    let row=[];
+    for(let x=0;x<w;x++){
+      const ch = x < line.length ? line[x] : ' ';
+      row.push(ch);
+    }
+    grid.push(row);
+  }
+  return {
+    id:def.id, zone:def.zone, name:def.name, label:def.label,
+    w, h, grid,
+    spawn:def.spawn, flag:def.flag,
+    palette:def.palette, music:def.music,
+    entities: def.entities||[],
+    widthPx:w*TILE, heightPx:h*TILE,
+    auto:!!def.auto, solarDir:def.solarDir, gust:!!def.gust, snowY:def.snowY,
+    bg:def.bg,
+    // runtime
+    items:[], enemies:[], particles:[], projectiles:[], floats:[], npcs:[], gadgets:[],
+    flagsOpen:{},
+    dumpRoom:null,
+    boss:null,
+    cleared:false, clearedAt:0
+  };
+}
+function tlChar(level,x,y){
+  if(x<0||y<0||x>=level.w||y>=level.h) return (y>=level.h)?'#':' ';
+  return level.grid[y][x];
+}
+function isSolid(level,x,y){ const c=tlChar(level,x,y); return c==='#'||c==='B'||c==='?'||c==='R'||c==='W'||c==='Q'||c==='G'||c==='q'||c==='K'; }
+function isOneWay(level,x,y){ const c=tlChar(level,x,y); return c==='^'||c==='='||c==='S'; }
+function isBounce(level,x,y){ return tlChar(level,x,y)==='A'; }
+
+// ===== SECTION: PHYSICS / PLAYER ============================
+const Game = {
+  state:'boot', // boot/title/map/play/paused/done/over/clear/death
+  level:null, levelIndex:0,
+  player:null,
+  lives:3, anodes:0, power:0, // 0 apprentice,1 16A,2 32A
+  arcMeter:0, arcMax:100,
+  multiplier:1,
+  timer:0, timerMax:300,
+  servicesFound:[],
+  zoneLevels:{},
+  shake:0, flash:0,
+  timeScale:1,
+};
+function newPlayer(px,py){
+  return {
+    x:px, y:py, w:10, h:14,
+    vx:0, vy:0,
+    facing:1,
+    onGround:false,
+    coyote:0, jumpBuf:0,
+    crouch:false,
+    invuln:0, surge:0, shield:false, impact:0, slide:0, slideT:0, tripCd:0,
+    seal:0,
+    swing:0, swung:false,
+    dead:false, deathT:0,
+    checkpoint:null,
+    animT:0
+  };
+}
+function solidAt(level,rect){
+  const x0=Math.floor(rect.x/TILE), y0=Math.floor(rect.y/TILE);
+  const x1=Math.floor((rect.x+rect.w-0.01)/TILE), y1=Math.floor((rect.y+rect.h-0.01)/TILE);
+  for(let ty=y0;ty<=y1;ty++)for(let tx=x0;tx<=x1;tx++){
+    if(isSolid(level,tx,ty)) return {tx,ty};
+  }
+  return null;
+}
+function moveAndCollide(level,p,dt){
+  // Horizontal
+  const prevY=p.y;
+  p.x += p.vx;
+  let r={x:p.x,y:p.y,w:p.w,h:p.h};
+  let hit=solidAt(level,r);
+  if(hit){
+    if(p.vx>0) p.x = hit.tx*TILE - p.w - 0.01;
+    else if(p.vx<0) p.x = (hit.tx+1)*TILE + 0.01;
+    p.vx=0;
+    r={x:p.x,y:p.y,w:p.w,h:p.h};
+  }
+  // Vertical
+  p.y += p.vy;
+  r={x:p.x,y:p.y,w:p.w,h:p.h};
+  p.onGround=false;
+  let vhit=solidAt(level,r);
+  if(vhit){
+    if(p.vy>0){
+      p.y = vhit.ty*TILE - p.h - 0.01;
+      p.vy=0; p.onGround=true;
+    } else if(p.vy<0){
+      p.y = (vhit.ty+1)*TILE + 0.01;
+      p.vy=0;
+      onHeadBump(level, p, vhit.ty);
+    }
+  }
+  // One-way platforms: only when falling and feet were above the top
+  if(p.vy>=0){
+    const feetPrev = prevY + p.h;
+    const feetNow = p.y + p.h;
+    const tx0=Math.floor((p.x+1)/TILE), tx1=Math.floor((p.x+p.w-1)/TILE);
+    const ty=Math.floor(feetNow/TILE);
+    for(let tx=tx0;tx<=tx1;tx++){
+      if(isOneWay(level,tx,ty)){
+        const top=ty*TILE;
+        if(feetPrev<=top+1 && feetNow>=top){
+          p.y = top - p.h - 0.01; p.vy=0; p.onGround=true;
+        }
+      }
+    }
+    // Bounce pads
+    for(let tx=tx0;tx<=tx1;tx++){
+      if(isBounce(level,tx,ty)){
+        const top=ty*TILE;
+        if(feetPrev<=top+2 && feetNow>=top){
+          p.y=top-p.h-0.01; p.vy=-BOUNCE_PAD_V;
+          AudioEngine.sfx('bounce');
+        }
+      }
+    }
+  }
+  return;
+}
+function onHeadBump(level,p,ty){
+  // hit a block from below: storage bay hatches dispense items
+  const tx0=Math.floor((p.x+2)/TILE), tx1=Math.floor((p.x+p.w-2)/TILE);
+  for(let tx=tx0;tx<=tx1;tx++){
+    if(level.grid[ty] && level.grid[ty][tx]==='?'){
+      spawnFromHatch(level,tx,ty);
+    }
+  }
+}
+function spawnFromHatch(level,tx,ty){
+  if(!Game.hatchState) Game.hatchState={};
+  const key=Game.levelIndex+':'+tx+','+ty;
+  if(!Game.hatchState[key]){
+    Game.hatchState[key]=true;
+    const roll=Math.random();
+    const bx=tx*TILE+8, by=ty*TILE-20;
+    const pop=(t,x,y)=>{ const it=makeItem(t,x,y); it.vy=-3.2; level.items.push(it); };
+    if(roll<0.55){ pop('anode',bx-14,by); pop('anode',bx-7,by-6); pop('anode',bx,by-9); pop('anode',bx+7,by-6); }
+    else if(roll<0.75){ pop(Math.random()<0.5?'sealant':'torque', bx-6, by); }
+    else if(roll<0.85){ pop('mooncake', bx-6, by); }
+    else if(roll<0.92){ spawnMouseFn(level,tx,ty); }
+    else { spawnParticles(bx, by+16, 8, '#d8c8a0', {up:2}); spawnFloatFx('?', bx, by, '#fff'); }
+    AudioEngine.sfx('hatch');
+  }
+}
+function updatePlayer(p,level,dt){
+  if(p.dead){
+    p.deathT+=dt;
+    p.vy += GRAVITY; p.y += p.vy;
+    return;
+  }
+  const run = Input.run || Input.isTouch; // touch defaults to run speed
+  const target = (Input.left? -1:0) + (Input.right? 1:0);
+  // high-altitude thin air (Z6): above the snow line the legs feel heavier
+  // and the arc meter slowly bleeds out until a thermos of strong tea
+  const cold = level.snowY!==undefined && (p.y+p.h)<level.snowY && (p.coldImmune||0)<=0 && !p.dead;
+  if(cold && Game.arcMeter>0){
+    Game.arcMeter=Math.max(0,Game.arcMeter-0.1);
+    if((p.animT|0)%24===0) spawnParticles(p.x+p.w/2, p.y, 1, '#cfe8ff', {up:-0.6});
+  }
+  const maxSp = (run? RUN_SPEED : WALK_SPEED) * (cold? 0.88 : 1);
+  // crouch (or sliding low with bearing grease)
+  const wantCrouch = (Input.down && p.onGround) || p.slideT>0;
+  p.crouch = wantCrouch;
+  const useH = p.crouch? CROUCH_H : (Game.power>0? 14:14);
+  if(p.crouch && p.h!==CROUCH_H){ p.y += (p.h-CROUCH_H); p.h=CROUCH_H; }
+  else if(!p.crouch && p.h!==14){
+    const sy = p.y - (14-p.h);
+    if(!solidAt(level,{x:p.x,y:sy,w:p.w,h:14})){ p.y=sy; p.h=14; } else { p.crouch=true; }
+  }
+
+  // --- surface under the feet (solar slide / EV charge pad) ---
+  let footChar=' ';
+  if(p.onGround){
+    const fx=Math.floor((p.x+p.w/2)/TILE), fy=Math.floor((p.y+p.h+2)/TILE);
+    footChar=tlChar(level,fx,fy);
+    if(footChar==='G'){
+      Game.regen=Math.min(100,(Game.regen||0)+1.1);
+      if(Game.power>0) Game.arcMeter=Math.min(Game.arcMax,Game.arcMeter+0.35);
+      if((p.animT|0)%5===0) spawnParticles(p.x+p.w/2, p.y+p.h, 1, '#6cf', {up:0.8});
+    }
+  }
+
+  // horizontal accel with skid
+  let acc = p.onGround? ACCEL : AIR_ACCEL;
+  if(p.onGround && p.vx!==0 && target!==0 && Math.sign(p.vx)!==target){ acc = SKID_ACCEL; }
+  if(target!==0){
+    p.vx += acc*target;
+    p.facing = target;
+  } else {
+    const fr = p.onGround? FRICTION : AIR_FRICTION;
+    if(p.vx>0) p.vx=Math.max(0,p.vx-fr);
+    else if(p.vx<0) p.vx=Math.min(0,p.vx+fr);
+  }
+  p.vx = Math.max(-maxSp, Math.min(maxSp, p.vx));
+  if(Math.abs(p.vx)<0.05) p.vx=0;
+
+  // rooftop solar array: wet panels make the deck a slide along the roof line
+  if(footChar==='S' && p.onGround){
+    const dir = (level.solarDir===undefined)?1:level.solarDir;
+    if(Math.abs(p.vx)<2.4) p.vx=dir*2.4; else p.vx=Math.max(-maxSp-0.6,Math.min(maxSp+0.6,p.vx+0.12*dir));
+    if((p.animT|0)%6===0) spawnParticles(p.x+p.w/2, p.y+p.h, 1, '#dff6ff', {up:0.3});
+  }
+
+  // timers
+  if(p.coyote>0) p.coyote--;
+  if(p.invuln>0) p.invuln--;
+  if(p.surge>0) p.surge--;
+  if(p.impact>0)p.impact--;
+  if(p.slide>0)p.slide--;
+  if(p.swing>0)p.swing--;
+  if(p.tripCd>0)p.tripCd--;
+  if(p.coldImmune>0)p.coldImmune--;
+
+  // bearing-grease slide: Down+Jump on ground while greased (consumes the jump press)
+  const startSlide = p.slide>0 && p.onGround && Input.down && Input.jumpJustPressed && !p.slideT;
+  if(startSlide){ p.slideT=18; p.jumpBuf=0; p.invuln=Math.max(p.invuln,10); AudioEngine.sfx('slide'); }
+
+  // jump buffering from input (edge; player-side buffer survives landing)
+  if(Input.jumpJustPressed && !startSlide){ p.jumpBuf = JUMPBUF_FRAMES; }
+
+  // perform jump: buffer + (onGround or coyote)
+  if(p.jumpBuf>0){
+    if(p.onGround || p.coyote>0){
+      let v = JUMP_V;
+      // regen dash: launch off a charge pad with a full store — boosted leap
+      if(footChar==='G' && (Game.regen||0)>=40){
+        v = JUMP_V+1.5;
+        p.vx = p.facing*(RUN_SPEED+1.5);
+        Game.regen=0;
+        AudioEngine.sfx('dash');
+        spawnFloatFx('regen dash', p.x-6, p.y-12, '#6cf');
+        spawnParticles(p.x+p.w/2, p.y+p.h, 12, '#6cf', {sp:1.6, up:1});
+      }
+      p.vy = -v;
+      p.onGround=false; p.coyote=0; p.jumpBuf=0;
+      AudioEngine.sfx('jump');
+    } else if(p.jumpBuf>0){ p.jumpBuf--; }
+  }
+
+  // variable jump: cap upward velocity on release
+  if(!Input.jump && p.vy<0){
+    if(p.vy < -JUMP_V*JUMP_CUT) p.vy = -JUMP_V*JUMP_CUT;
+  }
+
+  // attack input: X / J / twrench (edge). 32A tier w/ meter -> arc-flash, else wrench swing
+  // jump+wrench (either held while the other is pressed) throws a Sealant Tube
+  let didThrow=false;
+  // QR toll gate: a close scan with the wrench outranks swinging
+  if(Input.wrenchJustPressed && !p.dead && !Game.qr){
+    const q=scanGate(level,p);
+    if(q){ Game.qr=q; AudioEngine.sfx('qrbuzz'); didThrow=true; }
+  }
+  if(!didThrow && p.seal>0 && !p.dead && p.swing<=0 &&
+     ((Input.wrenchJustPressed && Input.jump) || (Input.jumpJustPressed && Input.wrench))){
+    throwSealant(p); didThrow=true;
+  }
+  if(Input.wrenchJustPressed && !p.dead && p.swing<=0 && !didThrow){
+    if(Game.power>=2 && Game.arcMeter>=ARC_COST){ fireArc(p); }
+    else { p.swing = (p.impact>0? 6: SWING_FRAMES); AudioEngine.sfx('wrench'); swingHits(p,level); }
+  }
+  if(didThrow){ p.jumpBuf=0; Input.consumeJumpBuffer(); }
+
+  // bearing-grease slide in progress: fast low dash, dust trail
+  if(p.slideT>0){
+    if(p.onGround){ p.slideT--; p.vx = p.facing*SLIDE_SPEED; if(Math.random()<0.5) spawnParticles(p.x+p.w/2, p.y+p.h, 1, '#e8e4c8', {up:0.6}); }
+    else p.slideT=0;
+  }
+
+  // --- zone tiles: cable climbing, steam updraft, canopy/lantern glide ---
+  {
+    const x0=Math.floor((p.x+1)/TILE), x1=Math.floor((p.x+p.w-1)/TILE);
+    const y0=Math.floor((p.y+1)/TILE), y1=Math.floor((p.y+p.h-1)/TILE);
+    let onC=false, onU=false;
+    for(let ty=y0;ty<=y1;ty++)for(let tx=x0;tx<=x1;tx++){
+      const c=tlChar(level,tx,ty);
+      if(c==='C') onC=true;
+      else if(c==='U') onU=true;
+    }
+    if(!p.onGround && onC && Input.up){
+      p.vine=true;
+      p.vy=-1.15;
+      p.vx*=0.55;
+      if((p.animT|0)%5===0) spawnParticles(p.x+p.w/2, p.y+2, 1, '#7df', {up:0.3});
+    }
+    if(onU){
+      p.vy-=0.8;
+      if(p.vy<-6.2) p.vy=-6.2;
+      if((p.animT|0)%4===0) spawnParticles(p.x+p.w/2, p.y+p.h-4, 1, '#fff', {up:1.8, sp:0.6});
+    }
+    let gl=null;
+    if(!p.onGround && !p.vine){
+      outer: for(let ty=y0-1;ty<=y1;ty++) for(let tx=x0-1;tx<=x1+1;tx++){
+        const c=tlChar(level,tx,ty);
+        if(c==='^'||c==='='||c==='L'){ gl={tx,ty,c}; break outer; }
+      }
+    }
+    // hold Up in the air near an awning/lantern rope: slow fall
+    if(gl && Input.up && p.vy>-1.6){
+      p.vy=Math.min(p.vy,1.3);
+      p.vx=Math.max(-maxSp,Math.min(maxSp,p.vx+p.facing*0.05));
+      // gusty night market: the wind can tear loose awning tiles mid-glide
+      if(level.gust && gl.c!=='L' && Math.random()<0.005){
+        level.grid[gl.ty][gl.tx]=' ';
+        spawnParticles(gl.tx*TILE+8, gl.ty*TILE+8, 14, '#e8f0f8', {sp:2, up:1.2});
+        AudioEngine.sfx('tear');
+        spawnFloatFx('wind tore the awning', gl.tx*TILE-12, gl.ty*TILE-10, '#cfd6e0');
+      }
+    }
+  }
+
+  // gravity (held steady on a climbing cable)
+  if(p.vine){ p.vy = Input.up? -1.15 : Math.min(p.vy,0.4); p.vine=false; }
+  else { p.vy += GRAVITY; }
+  if(p.vy>MAX_FALL) p.vy=MAX_FALL;
+
+  const before = p.onGround;
+  moveAndCollide(level,p,dt);
+  // coyote: refresh on ground, decrement in air
+  if(p.onGround) p.coyote=COYOTE_FRAMES;
+  else if(p.coyote>0) p.coyote--;
+
+  // HV orange line: standing/jumping into it trips the breaker — crouch to pass under
+  hvCollide(level,p);
+  // frozen-brittle platforms (Q) crack on the first step
+  if(p.onGround){
+    const tyq=Math.floor((p.y+p.h+0.5)/TILE);
+    const tx0=Math.floor((p.x+2)/TILE), tx1=Math.floor((p.x+p.w-2)/TILE);
+    for(let tx=tx0;tx<=tx1;tx++){
+      if(tlChar(level,tx,tyq)==='Q'){
+        level.grid[tyq][tx]=' ';
+        spawnParticles(tx*TILE+8,tyq*TILE+4,8,'#bfe8f5',{up:1});
+        AudioEngine.sfx('frostbreak');
+        break;
+      }
+    }
+  }
+
+  // animation timer
+  if(p.onGround && Math.abs(p.vx)>0.3) p.animT+=Math.abs(p.vx); else p.animT=0;
+
+  // world bounds: fall off bottom
+  if(p.y > level.heightPx + 40) killPlayer(p,'fall');
+
+  // arc meter slow regen at higher tiers (real service)
+  if(Game.power>0) Game.arcMeter = Math.min(Game.arcMax, Game.arcMeter + (Game.power===2?0.15:0.06));
+
+  // clamp left
+  if(p.x<0){p.x=0;p.vx=0;}
+  if(p.x+p.w>level.widthPx){p.x=level.widthPx-p.w;p.vx=0;}
+}
+
+// ===== SECTION: ATTACK (stage 3) ===========================
+function swingRect(p){
+  return {x: p.facing>0? p.x+p.w : p.x-12, y: p.y+2, w:12, h:p.h-4};
+}
+function swingHits(p,level){
+  const r=swingRect(p);
+  const tx0=Math.floor(r.x/TILE), ty0=Math.floor(r.y/TILE);
+  const tx1=Math.floor((r.x+r.w-0.01)/TILE), ty1=Math.floor((r.y+r.h-0.01)/TILE);
+  for(let ty=ty0;ty<=ty1;ty++)for(let tx=tx0;tx<=tx1;tx++){
+    const c=tlChar(level,tx,ty);
+    if(c==='B'){ breakBlock(level,tx,ty); }
+    else if(c==='W'){ breakWire(level,tx,ty); }
+    else if(c==='o'){
+      // break the window tile: it vents any drifting gas cloud nearby (the safe
+      // way to clear a leak — never arc-flash a gas cloud, it detonates)
+      level.grid[ty][tx]=' ';
+      const wx=tx*TILE+8, wy=ty*TILE+8;
+      let popped=false;
+      for(let i=level.enemies.length-1;i>=0;i--){
+        const en=level.enemies[i];
+        if(en.kind==='gascloud'&&!en.dead&&Math.hypot((en.x+8)-wx,(en.y+6)-wy)<52){
+          en.dead=true; popped=true;
+          spawnParticles(en.x+8,en.y+6,12,'#d8e8c8',{up:1.2});
+          Game.anodes++;
+        }
+      }
+      spawnParticles(wx,wy,8,popped?'#d8e8c8':'#cfe0f0',{up:1});
+      AudioEngine.sfx(popped?'hiss':'break');
+      spawnFloatFx(popped?'排风 VENTED':'',wx-8,wy-10,'#d8e8c8');
+    } else if(c==='V'){
+      level.grid[ty][tx]='v';
+      spawnParticles(tx*TILE+8,ty*TILE+8,8,'#89a',{up:1});
+      spawnFloatFx('capped',tx*TILE-4,ty*TILE-10,'#cfe');
+      AudioEngine.sfx('wrench');
+    } else if(c==='H'){ hvTrip(p); }
+    else if(c==='K'){
+      // sea-freight parts crate: wrench it open for an imported part
+      level.grid[ty][tx]=' ';
+      spawnParticles(tx*TILE+8,ty*TILE+8,10,'#a08260',{up:1.4});
+      AudioEngine.sfx('break');
+      const it=makeItem('part',tx*TILE+3,ty*TILE-12); it.vy=-3.4; level.items.push(it);
+      spawnFloatFx('配件 PART', tx*TILE-6, ty*TILE-18, '#ffd266');
+      if(Math.random()<0.5){ const an=makeItem('anode',tx*TILE+9,ty*TILE-12); an.vy=-3; level.items.push(an); }
+    }
+  }
+  meleeHitEnemies(level,r,p);
+}
+function breakWire(level,tx,ty){
+  level.grid[ty][tx]=' ';
+  spawnParticles(tx*TILE+8,ty*TILE+8,10,'#d84a2a',{up:1.2});
+  AudioEngine.sfx('break');
+  if(Math.random()<0.35){ const it=makeItem('anode',tx*TILE+5,ty*TILE-12); it.vy=-3; level.items.push(it); }
+}
+function ventClouds(level,x,y,n){
+  // opening a window vents nearby drifting gas out of the room;
+  // with nothing trapped, it only puffs a small fresh gasp
+  let vented=0;
+  for(const en of level.enemies){
+    if(en.kind==='gascloud'&&!en.dead&&Math.abs((en.x+8)-x)<52&&Math.abs((en.y+6)-y)<40){
+      en.dead=true; vented++;
+      spawnParticles(en.x+8,en.y+6,12,'#e8f4ff',{up:1.2});
+    }
+  }
+  if(vented===0) for(let i=0;i<(n||3);i++){
+    level.enemies.push(makeEnemy('gascloud',x+(i-1)*16,y+(i%2)*8,{seed:Math.random()*6,life:540+((Math.random()*120)|0)}));
+  }
+  AudioEngine.sfx('gas');
+  spawnFloatFx(vented?('vented '+vented):'gasp',x-10,y-10,'#b8c48a');
+}
+function meleeHitEnemies(level,r,p){
+  if(!level.enemies) return;
+  for(let i=level.enemies.length-1;i>=0;i--){
+    const en=level.enemies[i];
+    if(en.dead) continue;
+    if(en.kind==='crusher'&&!en.parked&&rectHit(r,en.motorX,en.motorY,9,11)){ parkCrusher(level,en); continue; }
+    const hr=enRect(en);
+    if(!hr||!rectHit(r,hr.x,hr.y,hr.w,hr.h)) continue;
+    if(ENEMY_DEF[en.kind].melee){ defeatEnemy(level,en); }
+    else {
+      // wrench-proof: bearing metal clangs, gasses spark
+      spawnParticles(en.x+en.w/2,en.y+en.h/2,5,ENEMY_DEF[en.kind].clang?'#cfd6e0':'#aef',{up:1});
+      AudioEngine.sfx(ENEMY_DEF[en.kind].clang?'clang':'spark');
+    }
+  }
+}
+function hvCollide(level,p){
+  if(p.dead||p.tripCd>0) return;
+  const x0=Math.floor((p.x+1)/TILE), x1=Math.floor((p.x+p.w-1)/TILE);
+  const y0=Math.floor(p.y/TILE), y1=Math.floor((p.y+p.h-0.01)/TILE);
+  for(let ty=y0;ty<=y1;ty++)for(let tx=x0;tx<=x1;tx++){
+    if(tlChar(level,tx,ty)==='H'&&p.y<ty*TILE+7.5){ hvTrip(p); return; }
+  }
+}
+function hvTrip(p){
+  if(p.dead||p.tripCd>0) return;
+  p.tripCd=150;
+  if(Game.power>0) Game.power--;
+  p.invuln=Math.max(p.invuln,90);
+  spawnFloatFx('跳闸 BREAKER',p.x-6,p.y-10,'#ffb347');
+  spawnParticles(p.x+p.w/2,p.y+4,10,'#ffb347',{up:1.4});
+  Game.shake=Math.max(Game.shake,6);
+  Game.flash=Math.max(Game.flash,0.35);
+  AudioEngine.sfx('trip');
+}
+function breakBlock(level,tx,ty){
+  level.grid[ty][tx]=' ';
+  spawnParticles(tx*TILE+8,ty*TILE+8,8,'#b07a3c',{up:1.5});
+  AudioEngine.sfx('break');
+  const roll=Math.random();
+  const pop=(t,x,y,v)=>{ const it=makeItem(t,x,y); it.vy=v||-3.2; level.items.push(it); };
+  if(roll<0.5){ pop('anode',tx*TILE+3,ty*TILE-12); pop('anode',tx*TILE+9,ty*TILE-12); }
+  else if(roll<0.78){ pop(Math.random()<0.5?'sealant':'torque',tx*TILE+4,ty*TILE-14); }
+  else if(roll<0.92){ pop('mooncake',tx*TILE+4,ty*TILE-14); }
+  else pop('surge',tx*TILE+4,ty*TILE-14);
+}
+function fireArc(p){
+  const L=Game.level;
+  Game.arcMeter-=ARC_COST;
+  const pr={
+    x: p.facing>0? p.x+p.w : p.x-6, y: p.y+3, w:6, h:5,
+    vx: p.facing*ARC_SPEED, vy: -1.8, grav: true,
+    t:0, life:80, kind:'arc', draw: fn_arcdraw,
+    hit:()=>arcHit(L,pr)
+  };
+  L.projectiles.push(pr);
+  AudioEngine.sfx('arc');
+}
+function arcHit(L,pr){
+  // Z7 boss 220V transfer panel: an arc bolt clears the open-air panel (P2 job).
+  // The panel is in OPEN AIR above the deck, so a bolt flying there despawns on it, not on the hull.
+  const gb=L.boss;
+  if(gb && gb.type==='ghost' && gb.phase===2 && !gb.panel.hit){
+    const p=gb.panel;
+    if(pr.x+p.w>=p.x && pr.x<=p.x+p.w && pr.y+p.h>=p.y-4 && pr.y<=p.y+p.h+5){
+      p.hit=true; Game.shake=8;
+      spawnParticles(p.x+p.w/2, p.y+p.h/2, 18, '#7fd8ff', {});
+      spawnFloatFx('泄压 220V', p.x, p.y-8, '#7fd8ff');
+      AudioEngine.sfx('power2'); return true;
+    }
+    return false; // panel is in open air; keep flying (the hull solid despawns it if missed)
+  }
+  if(!L.enemies) return false;
+  for(let i=L.enemies.length-1;i>=0;i--){
+    const en=L.enemies[i];
+    if(en.dead) continue;
+    const hr=enRect(en);
+    if(!hr||!rectHit(pr,hr.x,hr.y,hr.w,hr.h)) continue;
+    if(en.kind==='gascloud'){ gasExplode(L,en); return true; }
+    if(en.kind==='serpent'){ popSerpentSeg(L,en); return true; }
+    if(ENEMY_DEF[en.kind].arc){ defeatEnemy(L,en); spawnParticles(pr.x+2,pr.y+2,6,'#cfe8ff',{up:1}); }
+    else spawnParticles(pr.x+2,pr.y+2,4,'#cfe8ff',{up:1});
+    return true;
+  }
+  return false;
+}
+function fn_arcdraw(){
+  const pr=this, x=Math.round(pr.x-Camera.x), y=Math.round(pr.y-Camera.y);
+  ctx.fillStyle='#dff0ff'; ctx.fillRect(x,y+1,6,3);
+  ctx.fillStyle='#4d8dff'; ctx.fillRect(pr.vx>0? x-1 : x+4, y, 2, 5);
+  ctx.fillStyle='rgba(120,190,255,.45)'; ctx.fillRect(pr.vx>0? x-5 : x+6, y+2, 4, 1);
+}
+// Sealant Tube throw: caps unsealed roof penetrations ('V' vents and boss targets)
+function throwSealant(p){
+  const L=Game.level; p.seal--;
+  L._sealX=p.x; L._sealY=p.y;
+  L.projectiles.push({
+    x: p.facing>0? p.x+p.w : p.x-8, y: p.y+2, w:8, h:6,
+    vx: p.facing*ARC_SPEED, vy: -2.6, grav: true, t:0, life:80, kind:'seal',
+    draw:fn_sealdraw, hit:()=>sealHit(L)
+  });
+  AudioEngine.sfx('seal');
+}
+function sealHit(L){
+  let capped=false;
+  // cap any open roof vent ('V') in a 3x3 tile radius
+  const cx=Math.floor((L._sealX+4)/TILE), cy=Math.floor((L._sealY+3)/TILE);
+  for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++){
+    if(tlChar(L,cx+ox,cy+oy)==='V'){
+      L.grid[cy+oy][cx+ox]='v'; capped=true;
+    }
+  }
+  if(L.boss && L.boss.sealTargets){
+    // generous tolerance: a good roof lob can cap several clustered penetrations at once
+    for(const t of L.boss.sealTargets){
+      if(!t.capped && Math.abs((L._sealX+4)-(t.x+t.w/2))<t.w/2+22 && Math.abs((L._sealY+3)-(t.y+t.h/2))<t.h/2+26){
+        t.capped=true; capped=true;
+        spawnParticles(t.x+t.w/2, t.y+t.h/2, 12, '#f4f2ea', {up:1.2});
+        AudioEngine.sfx('cap');
+      }
+    }
+  }
+  if(capped){
+    spawnFloatFx('封好 SEALED', L._sealX-10, L._sealY-10, '#eef8ff');
+    spawnParticles(L._sealX+4, L._sealY+3, 10, '#f4f2ea', {up:1});
+    return true;
+  }
+  return false;
+}
+function fn_sealdraw(){
+  const pr=this, x=Math.round(pr.x-Camera.x), y=Math.round(pr.y-Camera.y);
+  ctx.fillStyle='#fff'; ctx.fillRect(x,y,8,5);
+  ctx.fillStyle='#c33'; ctx.fillRect(x,y,8,2);
+  ctx.fillStyle='#888'; ctx.fillRect(x+8,y+1,3,3);
+}
+
+// ===== SECTION: ENTITY SYSTEM (stages add behavior) =========
+function spawnItem(level,type,x,y,count){ if(typeof spawnItemFn==='function') spawnItemFn(level,type,x,y,count); }
+function spawnFloat(level,type,x,y){ if(typeof spawnFloatFn==='function') spawnFloatFn(level,type,x,y); }
+function spawnMouse(level,x,y){ if(typeof spawnMouseFn==='function') spawnMouseFn(level,x,y); }
+function killPlayer(p,cause){ if(typeof killPlayerFn==='function') killPlayerFn(p,cause); }
+function hurtPlayer(p,dmg){ if(typeof hurtPlayerFn==='function') hurtPlayerFn(p,dmg); }
+function onPauseToggle(){ if(Game.state==='play'){Game.state='paused';} else if(Game.state==='paused'){Game.state='play';} }
+
+// ===== SECTION: LEVELS DATA =============================
+const LEVELS = [];
+// Palette presets per zone
+const PALETTES = {
+  z1:{ sky0:'#bcd7ea', sky1:'#eef4ee', far:'#7f98b8', mid:'#9fb2c9',
+       ground:'#6f8f7a', block:'#7a8f72', blockTop:'#c9dcae', blockShade:'#4f6b4a',
+       wood:'#b07a3c', woodShade:'#7a5324', woodEdge:'#d59a55', awning:'#e4ecf2' },
+  z2:{ sky0:'#cfe0b8', sky1:'#f6f3d8', far:'#8a9a6a', mid:'#a9b586',
+       ground:'#8f8a5a', block:'#9a8f5f', blockTop:'#d9cf9a', blockShade:'#6b6238',
+       wood:'#a4703a', woodShade:'#6f4a22', woodEdge:'#c8914f', awning:'#e9e2c8' },
+  z3:{ sky0:'#bfe4ea', sky1:'#eefbfd', far:'#6f9fb0', mid:'#93c3cd',
+       ground:'#6f9f9a',        block:'#7aa09c', blockTop:'#cdeee8', blockShade:'#4f736f',
+       wood:'#5fa0a0', woodShade:'#3f6d6d', woodEdge:'#8fcfcf', awning:'#d2f4f4' },
+  z4:{ sky0:'#e0c9a8', sky1:'#f6ecd8', far:'#9a7f63', mid:'#b79a7a',
+       ground:'#8a7050', block:'#a08260', blockTop:'#d7bd96', blockShade:'#6b5438',
+       wood:'#8a5e34', woodShade:'#5e3f1f', woodEdge:'#b5854a', awning:'#efe2c8' },
+  z5:{ sky0:'#1a1733', sky1:'#7a2e2a', far:'#3a2244', mid:'#5a2a3a',
+       ground:'#4a2a2a', block:'#6a3a3a', blockTop:'#a5605a', blockShade:'#402020',
+       wood:'#7a4a2a', woodShade:'#4e2e18', woodEdge:'#a5683a', awning:'#f2c46a' },
+  z6:{ sky0:'#a9c3e0', sky1:'#eaf2fc', far:'#7f97c4', mid:'#9fb4d6',
+       ground:'#8fa0b8', block:'#9aa8c0', blockTop:'#dbe6ff', blockShade:'#6a7a96',
+       wood:'#7a8aa0', woodShade:'#4e5a70', woodEdge:'#a8b6cc', awning:'#e0ecff' },
+  z7:{ sky0:'#3a3550', sky1:'#6a5a7a', far:'#5a4f6a', mid:'#6f6280',
+       ground:'#5a4f5a', block:'#7a6a78', blockTop:'#b8a8b4', blockShade:'#3a313a',
+       wood:'#8a6a5c', woodShade:'#5a4038', woodEdge:'#b89078', awning:'#d8c8d0' },
+};
+function L(levelDef){ return levelDef; }
+// shared grid builder: W wide, 18 rows, ground top at row 14
+function mkGrid(W){
+  const rows=[]; for(let y=0;y<18;y++) rows.push(' '.repeat(W));
+  const set=(x,y,c)=>{ if(x>=0&&x<W&&y>=0&&y<18) rows[y]=rows[y].slice(0,x)+c+rows[y].slice(x+1); };
+  const holes=(list)=>list.forEach(([a,b])=>{ for(let x=a;x<=b;x++) for(let y=14;y<17;y++) set(x,y,' '); });
+  for(let x=0;x<W;x++) for(let y=14;y<18;y++) set(x,y,'#');
+  return {rows,set,holes};
+}
+
+// ---- Zone 1, Level 1-1: Bentley Rows (tutorial, lakeside Class B vans) ----
+const W=148;
+function g11grid(){
+  // 18 rows tall. Ground top at row 14.
+  const rows=[];
+  for(let y=0;y<18;y++) rows.push(' '.repeat(W));
+  const set=(x,y,c)=>{ if(x>=0&&x<W&&y>=0&&y<18) rows[y]=rows[y].slice(0,x)+c+rows[y].slice(x+1); };
+  // ground (rows 14-17) with holes
+  for(let x=0;x<W;x++){
+    for(let y=14;y<18;y++) set(x,y,'#');
+  }
+  // holes (gaps)
+  // holes are 3 tiles deep with a floor at row 17 (jumpable out)
+  const holes=[[40,43],[70,74],[100,103]];
+  holes.forEach(([a,b])=>{ for(let x=a;x<=b;x++) for(let y=14;y<17;y++) set(x,y,' '); });
+  // roof-penetration seams: drip goblins until wrench-capped or sealant thrown
+  set(15,7,'V'); set(18,7,'V');
+  // first platform: awning oneway
+  for(let x=12;x<=17;x++) set(x,10,'^');
+  // wiring bridge over hole 1 (mice chew it — keep moving)
+  for(let x=40;x<=43;x++) set(x,12,'W');
+  // broken panel with a venting window over a gas pocket (crawl under, or vent it)
+  set(60,11,'#'); set(62,11,'#');
+  set(61,11,'o');
+  // hatch row you hit from below
+  set(24,10,'?'); set(25,10,'?'); set(26,10,'?');
+  // step up before hole 1 (1-high, Mario tutorial style)
+  set(34,13,'#');
+  // bounce pad on ground
+  set(48,13,'A');
+  // floating solid block
+  set(55,11,'B'); set(56,11,'B');
+  // second platform cluster
+  for(let x=52;x<=58;x++) set(x,9,'^');
+  // ramp launch
+  set(63,13,'R');
+  // staircase to roof (1/2/3 blocks, walkable by hopping each step)
+  set(76,13,'#');
+  set(77,13,'#'); set(77,12,'#');
+  set(78,13,'#'); set(78,12,'#'); set(78,11,'#');
+  set(79,12,'#'); set(79,11,'#');
+  set(80,11,'#');
+  // roof anode ledge
+  for(let x=81;x<=85;x++) set(x,10,'^');
+  // ? blocks after
+  set(90,10,'?'); set(91,10,'?');
+  // long oneway
+  for(let x=95;x<=101;x++) set(x,9,'^');
+  // blocks bridge over hole 3
+  set(100,10,'#'); set(101,10,'#');
+  // final Mario-style stairs (1/2/3) up to a thin roof ledge; flag sits on the
+  // ground past the last hole, on the main walking path
+  set(112,13,'#');
+  set(114,12,'#'); set(114,13,'#');
+  set(115,12,'#'); set(115,13,'#');
+  set(117,11,'#'); set(117,12,'#'); set(117,13,'#');
+  set(118,11,'#'); set(118,12,'#'); set(118,13,'#');
+  for(let x=119;x<=126;x++) set(x,11,'#');
+  return rows;
+}
+LEVELS.push(L({
+  id:'1-1', zone:1, label:'1-1', name:'Bentley Rows',
+  spawn:{x:2,y:9}, flag:{x:140,y:11},
+  palette:PALETTES.z1, music:1,
+  map:g11grid(),
+  entities:[
+    {kind:'anodes', x:13, y:9, n:5},
+    {kind:'sealant', x:48, y:12},
+    {kind:'shield', x:49, y:12},      // butyl tape, next to the rooftop sealant
+    {kind:'torque', x:55, y:9},
+    {kind:'anodes', x:52, y:8, n:6},
+    {kind:'order', x:79, y:9},       // hidden-ish up on roof
+    {kind:'surge', x:82, y:8},       // EMS unit on the roof
+    {kind:'anodes', x:81, y:9, n:5},
+    {kind:'grease', x:77, y:13},
+    {kind:'anodes', x:95, y:8, n:6},
+    {kind:'cee', x:95, y:8},         // 32A CEE plug on the long one-way
+    {kind:'impact', x:100, y:8},     // impact driver on the one-way
+    {kind:'order', x:110, y:12},
+    {kind:'mooncake', x:25, y:10},
+    {kind:'anodes', x:120, y:9, n:5},
+    {kind:'order', x:123, y:9},       // 3rd order, on the roof ledge
+    {kind:'enemy', type:'goblin',  x:29, y:13},
+    {kind:'enemy', type:'goblin',  x:62, y:13},
+    {kind:'enemy', type:'blob',    x:87, y:13},
+    {kind:'enemy', type:'mouse',   x:38, y:13},   // pack gnaws the W bridge over hole 1
+    {kind:'enemy', type:'betty',   x:97, y:13},
+    {kind:'enemy', type:'miswired',x:127,y:13},
+    {kind:'enemy', type:'gascloud',x:115, y:12.0, opt:{seed:1.7, life:6000}},
+    {kind:'pedestal', a:16, x:38, y:13.5},   // checkpoint before hole 1
+    {kind:'pedestal', a:32, x:110, y:13.5},  // premium 32A post near the finish
+    {kind:'npc', type:'store', x:5,y:13},
+    {kind:'npc', type:'sign', text:'营地', sub:'CAMPGROUND', x:31,y:13},
+    {kind:'npc', type:'sign', text:'接地检查', sub:'CHECK YOUR GROUND', x:96,y:13},
+  ],
+}));
+
+// ---- Zone 1, Level 1-2: Dump Point Alley (dump room bonus, vent caps, window leak, miswired) ----
+function g12grid(){
+  const g = mkGrid(150);
+  g.holes([[38,41],[66,70],[96,99]]);
+  const s = g.set;
+  for(let x=8;x<=14;x++) s(x,10,'^');            // awning
+  s(16,10,'?'); s(17,10,'?');                    // hatches
+  s(30,13,'#');                                  // step before hole 1
+  for(let x=46;x<=52;x++) s(x,9,'^');            // awning tier
+  s(55,11,'#'); s(56,11,'o'); s(57,11,'#');      // broken window over gas pocket
+  for(let x=66;x<=70;x++) s(x,12,'W');           // wiring bridge over hole 2
+  for(let x=104;x<=110;x++) s(x,9,'^');          // long awning
+  s(24,8,'V'); s(27,8,'V');                      // open roof vents (drip goblins)
+  s(115,8,'V'); s(117,8,'V');
+  s(136,13,'#');                                 // final Mario stairs 1/2/3
+  s(138,13,'#'); s(138,12,'#'); s(139,13,'#'); s(139,12,'#');
+  s(141,11,'#'); s(141,12,'#'); s(141,13,'#');
+  for(let x=142;x<=145;x++) s(x,11,'#');         // roof ledge
+  return g.rows;
+}
+LEVELS.push(L({
+  id:'1-2', zone:1, label:'1-2', name:'Dump Point Alley',
+  spawn:{x:2,y:9}, flag:{x:148,y:11},
+  palette:PALETTES.z1, music:1,
+  map:g12grid(),
+  entities:[
+    {kind:'anodes', x:12, y:12, n:5},
+    {kind:'anodes', x:32, y:12, n:4},
+    {kind:'torque', x:44, y:12},                 // 16A hard hat on the ground path
+    {kind:'anodes', x:48, y:8, n:6},             // on the awning tier
+    {kind:'order', x:50, y:8},
+    {kind:'sealant', x:74, y:12},                 // second tube before the dump point
+    {kind:'anodes', x:76, y:12, n:4},
+    {kind:'anodes', x:84, y:12, n:5},             // dump room payout zone
+    {kind:'order', x:70, y:12},
+    {kind:'anodes', x:106, y:8, n:5},             // on the long awning
+    {kind:'cee', x:107, y:8},                     // 32A plug (human route)
+    {kind:'anodes', x:120, y:12, n:4},
+    {kind:'surge', x:118, y:12},                  // grounds the miswired pedestal ahead
+    {kind:'anodes', x:134, y:12, n:4},
+    {kind:'anodes', x:143, y:10, n:3},            // roof ledge
+    {kind:'enemy', type:'goblin',   x:34, y:13},
+    {kind:'enemy', type:'goblin',   x:46, y:13},
+    {kind:'enemy', type:'gascloud', x:56, y:12.0, opt:{seed:2.3, life:99999}},
+    {kind:'enemy', type:'blob',     x:60, y:13},
+    {kind:'enemy', type:'mouse',    x:62, y:13},   // gnaws the W bridge over hole 2
+    {kind:'enemy', type:'goblin',   x:74, y:13},
+    {kind:'enemy', type:'betty',    x:90, y:13},
+    {kind:'enemy', type:'miswired', x:124, y:13},
+    {kind:'enemy', type:'gascloud', x:128, y:12.0, opt:{seed:4.1, life:99999}},
+    {kind:'enemy', type:'goblin',   x:132, y:13},
+    {kind:'pedestal', a:16, x:20, y:13.5},
+    {kind:'pedestal', a:32, x:112, y:13.5},
+    {kind:'npc', type:'store', x:5, y:13},
+    {kind:'npc', type:'sign', text:'排污点', sub:'DUMP POINT', x:79, y:13},
+    {kind:'npc', type:'sign', text:'黑水先开', sub:'BLACK FIRST', x:88, y:13},
+    {kind:'dump', x:82, y:13},
+  ],
+}));
+
+// ---- Zone 1, Level 1-3: Stabilizer Row (slide-out crushers, two-tier awnings, HV line) ----
+function g13grid(){
+  const g = mkGrid(156);
+  g.holes([[20,23],[96,99]]);
+  const s = g.set;
+  for(let x=26;x<=34;x++) s(x,9,'^');             // lower awning tier
+  for(let x=30;x<=38;x++) s(x,7,'^');             // upper awning tier
+  s(33,5,'?');                                    // hatch above the upper tier
+  s(46,13,'H'); s(47,13,'H'); s(48,13,'H'); s(49,13,'H'); // HV service line (crawl under)
+  s(52,13,'#');
+  for(let x=56;x<=62;x++) s(x,10,'^');
+  s(84,13,'H'); s(85,13,'H'); s(86,13,'H'); s(87,13,'H');
+  for(let x=96;x<=99;x++) s(x,12,'W');            // wiring bridge over hole 2
+  s(10,8,'V'); s(13,8,'V');
+  s(121,8,'V'); // vent 118 removed: drip goblins died the bot just short of surge@116
+  s(136,13,'#');
+  s(138,13,'#'); s(138,12,'#'); s(139,13,'#'); s(139,12,'#');
+  s(141,11,'#'); s(141,12,'#'); s(141,13,'#');
+  for(let x=142;x<=145;x++) s(x,11,'#');
+  return g.rows;
+}
+LEVELS.push(L({
+  id:'1-3', zone:1, label:'1-3', name:'Stabilizer Row',
+  spawn:{x:2,y:9}, flag:{x:148,y:11},
+  palette:PALETTES.z1, music:1,
+  map:g13grid(),
+  entities:[
+    {kind:'anodes', x:10, y:12, n:5},
+    {kind:'torque', x:24, y:12},
+    {kind:'anodes', x:30, y:8, n:5},              // lower tier
+    {kind:'anodes', x:34, y:6, n:5},              // upper tier
+    {kind:'order', x:34, y:6},
+    {kind:'anodes', x:44, y:12, n:4},
+    {kind:'anodes', x:58, y:9, n:5},
+    {kind:'cee', x:60, y:9},                      // 32A plug on the tier
+    {kind:'cee', x:66, y:12},                     // 32A plug on the ground path
+    {kind:'anodes', x:74, y:12, n:4},
+    {kind:'order', x:80, y:12},
+    {kind:'anodes', x:88, y:12, n:4},
+    {kind:'anodes', x:122, y:12, n:4},
+    {kind:'surge', x:116, y:12},
+    {kind:'anodes', x:143, y:10, n:3},            // roof ledge
+    {kind:'enemy', type:'goblin',   x:22, y:13},
+    {kind:'enemy', type:'goblin',   x:44, y:13},
+    {kind:'enemy', type:'mouse',    x:60, y:13},
+    {kind:'enemy', type:'crusher',  x:70, y:13, opt:{dir:1}},  // slide-out: wrench the motor
+    {kind:'enemy', type:'blob',     x:78, y:13},
+    {kind:'enemy', type:'gascloud', x:92, y:12.0, opt:{seed:1.2, life:99999}},
+    {kind:'enemy', type:'betty',    x:104, y:13},
+    {kind:'enemy', type:'goblin',   x:112, y:13},
+    {kind:'enemy', type:'miswired', x:126, y:13},
+    {kind:'enemy', type:'goblin',   x:134, y:13},
+    {kind:'pedestal', a:16, x:16, y:13.5},
+    {kind:'pedestal', a:32, x:118, y:13.5},
+    {kind:'npc', type:'store', x:5, y:13},
+    {kind:'npc', type:'sign', text:'支腿', sub:'JACKS DOWN', x:54, y:13},
+  ],
+}));
+
+// ---- Zone 1, Level 1-4: Night Service (serpent, scalper, double miswired, HV crawl) ----
+function g14grid(){
+  const g = mkGrid(160);
+  g.holes([[30,33],[62,65],[96,100],[120,123]]);
+  const s = g.set;
+  s(14,13,'H'); s(15,13,'H'); s(16,13,'H'); s(17,13,'H');
+  s(22,8,'V'); s(25,8,'V');
+  s(55,11,'#'); s(56,11,'o'); s(57,11,'#');       // broken window over gas pocket
+  for(let x=40;x<=46;x++) s(x,9,'^');             // awning over the sewer run
+  for(let x=96;x<=100;x++) s(x,12,'W');           // wiring bridge over hole 3
+  for(let x=104;x<=110;x++) s(x,9,'^');
+  s(108,8,'V'); s(111,8,'V');
+  s(128,13,'H'); s(129,13,'H'); s(130,13,'H'); s(131,13,'H');
+  s(142,13,'#');
+  s(144,13,'#'); s(144,12,'#'); s(145,13,'#'); s(145,12,'#');
+  s(147,11,'#'); s(147,12,'#'); s(147,13,'#');
+  for(let x=148;x<=152;x++) s(x,11,'#');
+  return g.rows;
+}
+LEVELS.push(L({
+  id:'1-4', zone:1, label:'1-4', name:'Night Service',
+  spawn:{x:2,y:9}, flag:{x:154,y:11},
+  palette:PALETTES.z1, music:1,
+  map:g14grid(),
+  entities:[
+    {kind:'anodes', x:8, y:12, n:4},
+    {kind:'anodes', x:20, y:12, n:4},
+    {kind:'order', x:28, y:12},
+    {kind:'surge', x:34, y:12},                   // 5s invincibility for the serpent + scalper run
+    {kind:'anodes', x:42, y:8, n:6},              // on the awning
+    {kind:'mooncake', x:44, y:8},
+    {kind:'anodes', x:50, y:12, n:5},
+    {kind:'order', x:60, y:12},
+    {kind:'anodes', x:68, y:12, n:4},
+    {kind:'shield', x:72, y:12},
+    {kind:'anodes', x:78, y:12, n:4},
+    {kind:'order', x:84, y:12},
+    {kind:'anodes', x:92, y:12, n:4},
+    {kind:'anodes', x:98, y:11, n:4},             // on the wiring bridge
+    {kind:'surge', x:102, y:12},                  // grounds both miswired pedestals
+    {kind:'anodes', x:104, y:8, n:5},
+    {kind:'anodes', x:112, y:12, n:4},
+    {kind:'anodes', x:136, y:12, n:4},
+    {kind:'anodes', x:149, y:10, n:4},            // roof ledge
+    {kind:'enemy', type:'goblin',   x:22, y:13},
+    {kind:'enemy', type:'mouse',    x:28, y:13},
+    {kind:'enemy', type:'goblin',   x:36, y:13},
+    {kind:'enemy', type:'serpent',  x:40, y:13},  // sewer serpent: pop it segment by segment
+    {kind:'enemy', type:'goblin',   x:46, y:13},
+    {kind:'enemy', type:'gascloud', x:56, y:12.0, opt:{seed:3.3, life:99999}},
+    {kind:'enemy', type:'scalper',  x:66, y:13},
+    {kind:'enemy', type:'crusher',  x:72, y:13, opt:{dir:1}},
+    {kind:'enemy', type:'betty',    x:88, y:13},
+    {kind:'enemy', type:'blob',     x:92, y:13},
+    {kind:'enemy', type:'miswired', x:104, y:13},
+    {kind:'enemy', type:'betty',    x:116, y:13},
+    {kind:'enemy', type:'miswired', x:134, y:13},
+    {kind:'enemy', type:'blob',     x:138, y:13},
+    {kind:'pedestal', a:16, x:10, y:13.5},
+    {kind:'pedestal', a:32, x:122, y:13.5},
+    {kind:'npc', type:'store', x:5, y:13},
+    {kind:'npc', type:'sign', text:'夜修站', sub:'NIGHT SERVICE', x:12, y:13},
+  ],
+}));
+
+// ---- Zone 1, Boss 1-B: Repair Bay — The Pop-Top Terror ----
+function g1bgrid(){
+  const g = mkGrid(72);
+  const s = g.set;
+  // flat repair-bay arena (no pits); the van's pop-top deck + service ramp are one-way W tiles
+  for(let x=33;x<=40;x++) s(x,10,'W');
+  // van body interior is solid (no walking under the van)
+  for(let x=33;x<=38;x++){ s(x,11,'#'); s(x,12,'#'); s(x,13,'#'); }
+  s(12,13,'~'); s(20,13,'~'); s(68,13,'~'); s(60,13,'~');
+  return g.rows;
+}
+LEVELS.push(L({
+  id:'1-B', zone:1, label:'1-B', name:'Repair Bay',
+  spawn:{x:2,y:9},
+  palette:PALETTES.z1, music:1, bossIntro:'POP-TOP TERROR 弹顶恶霸',
+  map:g1bgrid(),
+  entities:[
+    {kind:'anodes', x:8, y:12, n:4},
+    {kind:'anodes', x:62, y:12, n:4},
+    {kind:'surge', x:66, y:12},
+    {kind:'shield', x:6, y:12},
+    {kind:'pedestal', a:16, x:4, y:13.5},
+    {kind:'npc', type:'sign', text:'检修', sub:'REPAIR BAY', x:7, y:13},
+    {kind:'boss', x:33, y:14},
+    {kind:'enemy', type:'goblin', x:18, y:13},
+    {kind:'enemy', type:'goblin', x:54, y:13},
+  ],
+}));
+
+// ---- Zone 2, Level 2-1: Cab-Over Court (Class C rigs, solar-roof slide, seesaw gap) ----
+function g21grid(){
+  const g = mkGrid(160);
+  g.holes([[36,40],[96,102]]);
+  const s = g.set;
+  for(let x=16;x<=22;x++) s(x,10,'^');             // awning
+  s(28,10,'?'); s(29,10,'?'); s(30,10,'?');        // hatches
+  for(let x=36;x<=40;x++) s(x,12,'W');             // wiring bridge over hole 1
+  s(44,13,'A');                                     // bounce pad
+  for(let x=52;x<=59;x++) s(x,10,'S');             // rooftop solar slide (drifts right)
+  s(66,11,'B'); s(67,11,'B'); s(68,11,'B');        // floating solids
+  for(let x=120;x<=123;x++) s(x,13,'#');           // stairs 1
+  for(let x=124;x<=127;x++){ s(x,12,'#'); s(x,13,'#'); }
+  for(let x=128;x<=131;x++){ s(x,11,'#'); s(x,12,'#'); s(x,13,'#'); }
+  for(let x=132;x<=138;x++) s(x,11,'#');           // roof ledge
+  return g.rows;
+}
+LEVELS.push(L({
+  id:'2-1', zone:2, label:'2-1', name:'Cab-Over Court',
+  spawn:{x:2,y:9}, flag:{x:150,y:11}, solarDir:1,
+  palette:PALETTES.z2, music:2,
+  map:g21grid(),
+  entities:[
+    {kind:'anodes', x:6, y:12, n:4},
+    {kind:'torque', x:20, y:12},
+    {kind:'anodes', x:17, y:9, n:5},
+    {kind:'order', x:29, y:9},
+    {kind:'anodes', x:47, y:12, n:4},
+    {kind:'anodes', x:53, y:8, n:5},
+    {kind:'mooncake', x:35, y:12},
+    {kind:'anodes', x:67, y:10, n:4},
+    {kind:'order', x:72, y:12},
+    {kind:'anodes', x:80, y:12, n:5},
+    {kind:'cee', x:116, y:12},
+    {kind:'anodes', x:118, y:12, n:4},
+    {kind:'order', x:133, y:10},
+    {kind:'anodes', x:134, y:10, n:4},
+    {kind:'enemy', type:'goblin',    x:28, y:13},
+    {kind:'enemy', type:'mouse',     x:38, y:13},
+    {kind:'enemy', type:'goblin',    x:56, y:13},
+    {kind:'enemy', type:'betty',     x:76, y:13},
+    {kind:'enemy', type:'blob',      x:84, y:13},
+    {kind:'enemy', type:'screamer',  x:92, y:13},
+    {kind:'enemy', type:'scalper',   x:108, y:13},
+    {kind:'enemy', type:'goblin',    x:126, y:13},
+    {kind:'seesaw', x:95, y:12},
+    {kind:'pedestal', a:16, x:24, y:13.5},
+    {kind:'pedestal', a:32, x:112, y:13.5},
+    {kind:'npc', type:'store', x:5, y:13},
+    {kind:'npc', type:'sign', text:'营地', sub:'THE ROWS', x:10, y:13},
+    {kind:'npc', type:'sign', text:'象棋', sub:'CHECKERS', x:48, y:13},
+    {kind:'npc', type:'xiangqi', x:44, y:13},
+  ],
+}));
+
+// ---- Zone 3, Level 3-1: EV Meadow (charge pads + regen dash, cable vines, steam updrafts) ----
+function g31grid(){
+  const g = mkGrid(164);
+  g.holes([[34,37],[70,75],[120,125]]);
+  const s = g.set;
+  for(let x=14;x<=18;x++) s(x,14,'G');             // EV charge pads (flush with ground)
+  for(let x=24;x<=30;x++) s(x,10,'^');             // awning
+  s(44,13,'A');
+  for(let y=8;y<=12;y++) s(54,y,'C');              // charging-cable vine to climb
+  s(58,10,'?'); s(59,10,'?'); s(60,10,'?');
+  for(let x=70;x<=75;x++) for(let y=10;y<=13;y++) s(x,y,'U'); // steam updraft over hole 2
+  for(let x=70;x<=75;x++) s(x,8,'^');              // awning above the updraft
+  for(let x=120;x<=125;x++) s(x,11,'^');           // awning over hole 3
+  s(48,12,'h'); s(130,12,'h');                     // water heaters (thaw wraiths)
+  for(let x=132;x<=135;x++) s(x,13,'#');
+  for(let x=136;x<=139;x++){ s(x,12,'#'); s(x,13,'#'); }
+  for(let x=140;x<=143;x++){ s(x,11,'#'); s(x,12,'#'); s(x,13,'#'); }
+  for(let x=144;x<=150;x++) s(x,11,'#');           // roof ledge
+  return g.rows;
+}
+LEVELS.push(L({
+  id:'3-1', zone:3, label:'3-1', name:'EV Meadow',
+  spawn:{x:2,y:9}, flag:{x:156,y:11},
+  palette:PALETTES.z3, music:3,
+  map:g31grid(),
+  entities:[
+    {kind:'anodes', x:6, y:12, n:4},
+    {kind:'torque', x:16, y:12},
+    {kind:'anodes', x:26, y:9, n:5},
+    {kind:'order', x:27, y:9},
+    {kind:'anodes', x:40, y:12, n:4},
+    {kind:'sealant', x:50, y:12},
+    {kind:'anodes', x:53, y:8, n:4},
+    {kind:'anodes', x:59, y:9, n:4},
+    {kind:'order', x:72, y:7},
+    {kind:'anodes', x:73, y:7, n:4},
+    {kind:'anodes', x:92, y:12, n:5},
+    {kind:'cee', x:134, y:12},
+    {kind:'anodes', x:136, y:10, n:4},
+    {kind:'order', x:146, y:10},
+    {kind:'anodes', x:147, y:10, n:4},
+    {kind:'enemy', type:'wraith',   x:44, y:12},
+    {kind:'enemy', type:'goblin',   x:46, y:13},
+    {kind:'enemy', type:'gascloud', x:62, y:12.0, opt:{seed:2.1, life:99999}},
+    {kind:'enemy', type:'blob',     x:90, y:13},
+    {kind:'enemy', type:'betty',    x:100, y:13},
+    {kind:'enemy', type:'goblin',   x:112, y:13},
+    {kind:'enemy', type:'wraith',   x:126, y:12},
+    {kind:'pedestal', a:16, x:20, y:13.5},
+    {kind:'pedestal', a:32, x:116, y:13.5},
+    {kind:'npc', type:'store', x:5, y:13},
+    {kind:'npc', type:'sign', text:'充电桩', sub:'CHARGE', x:15, y:13},
+    {kind:'npc', type:'sign', text:'爬线', sub:'CLIMB', x:46, y:13},
+    {kind:'npc', type:'hotpot', x:84, y:13},
+  ],
+}));
+
+// ---- Zone 4, Level 4-1: Import Corner (customs crates, part gate, leak-vent goblins) ----
+function g41grid(){
+  const g = mkGrid(160);
+  g.holes([[28,31],[86,90]]);
+  const s = g.set;
+  for(let x=28;x<=31;x++) s(x,10,'^');             // awning over hole 1
+  s(40,12,'K'); s(40,13,'K'); s(41,13,'K');        // customs crate stack (wrench breaks it)
+  s(40,11,'B');                                    // shelf the crate anode rests on
+  s(58,10,'?'); s(59,10,'?');
+  for(let x=64;x<=70;x++) s(x,9,'^');              // awning over part-gate alley
+  for(let x=86;x<=90;x++) s(x,12,'W');             // wire bridge over hole 2 (mouse chews it)
+  s(96,13,'A');                                    // bounce pad
+  s(108,11,'B'); s(108,12,'B'); s(109,11,'B'); s(109,12,'B'); // wrench bench (reach the vent)
+  s(110,10,'V');                                   // open vent (drips goblins until capped)
+  for(let x=118;x<=121;x++) s(x,13,'#');
+  for(let x=122;x<=125;x++){ s(x,12,'#'); s(x,13,'#'); }
+  for(let x=126;x<=129;x++){ s(x,11,'#'); s(x,12,'#'); s(x,13,'#'); }
+  for(let x=130;x<=136;x++) s(x,11,'#');           // roof ledge
+  return g.rows;
+}
+LEVELS.push(L({
+  id:'4-1', zone:4, label:'4-1', name:'Import Corner',
+  spawn:{x:2,y:9}, flag:{x:148,y:11},
+  palette:PALETTES.z4, music:4,
+  map:g41grid(),
+  entities:[
+    {kind:'anodes', x:6, y:12, n:4},
+    {kind:'torque', x:18, y:12},
+    {kind:'anodes', x:30, y:9, n:4},
+    {kind:'order', x:31, y:9},
+    {kind:'anodes', x:40, y:10, n:4},               // rests on the crate shelf
+    {kind:'anodes', x:44, y:12, n:4},
+    {kind:'anodes', x:52, y:12, n:4},
+    {kind:'part',   x:60, y:12},                    // truck part — opens the customs gate
+    {kind:'anodes', x:66, y:8, n:4},
+    {kind:'order', x:67, y:8},
+    {kind:'anodes', x:74, y:12, n:5},
+    {kind:'surge', x:78, y:12},                     // zaps the miswired unit ahead
+    {kind:'anodes', x:88, y:11, n:4},               // on the wire bridge
+    {kind:'surge', x:104, y:12},
+    {kind:'anodes', x:108, y:10, n:4},              // on the wrench bench
+    {kind:'order', x:92, y:12},
+    {kind:'cee', x:133, y:9},
+    {kind:'anodes', x:132, y:10, n:4},
+    {kind:'enemy', type:'goblin',   x:24, y:13},
+    {kind:'enemy', type:'goblin',   x:52, y:13},
+    {kind:'enemy', type:'betty',    x:84, y:13},
+    {kind:'enemy', type:'mouse',    x:88, y:13},
+    {kind:'enemy', type:'crusher',  x:94, y:13, opt:{dir:1}},
+    {kind:'enemy', type:'gascloud', x:116, y:12.0, opt:{seed:3.7, life:99999}},
+    {kind:'enemy', type:'miswired', x:114, y:13},
+    {kind:'enemy', type:'scalper',  x:132, y:13},
+    {kind:'partgate', x:62, y:11},
+    {kind:'pedestal', a:16, x:20, y:13.5},
+    {kind:'pedestal', a:32, x:135, y:9.5},
+    {kind:'npc', type:'store', x:5, y:13},
+    {kind:'npc', type:'sign', text:'配件', sub:'PARTS', x:44, y:13},
+    {kind:'npc', type:'sign', text:'报关', sub:'CUSTOMS', x:66, y:13},
+  ],
+}));
+
+// ---- Zone 5, Level 5-1: Night Market Midway (lantern glide lines, QR toll gates, gusty canopies) ----
+function g51grid(){
+  const g = mkGrid(168);
+  g.holes([[32,35],[74,79],[118,121]]);
+  const s = g.set;
+  for(let x=32;x<=35;x++) s(x,10,'L');             // lantern string over hole 1 (glide line)
+  for(let y=10;y<=13;y++) s(48,y,'q');             // QR toll gate 1
+  for(let x=74;x<=79;x++){ for(let y=10;y<=13;y++) s(x,y,'U'); s(x,8,'^'); } // hot-pot steam column
+  for(let x=84;x<=90;x++) s(x,10,'L');             // stall canopy (gust-tearable)
+  for(let y=10;y<=13;y++) s(104,y,'q');            // QR toll gate 2
+  for(let x=118;x<=123;x++) s(x,10,'L');           // lantern string over hole 3
+  for(let x=134;x<=140;x++) s(x,9,'L');            // upper lantern canopy
+  s(131,12,'h');                                     // water heater (thaws the wraith)
+  s(146,13,'#');
+  s(148,12,'#'); s(148,13,'#');
+  s(150,11,'#'); s(150,12,'#'); s(150,13,'#');
+  s(151,11,'#'); s(151,12,'#'); s(151,13,'#');
+  for(let x=152;x<=158;x++) s(x,11,'#');            // stage roof ledge
+  return g.rows;
+}
+LEVELS.push(L({
+  id:'5-1', zone:5, label:'5-1', name:'Night Market Midway',
+  spawn:{x:2,y:9}, flag:{x:160,y:11}, gust:1,
+  palette:PALETTES.z5, music:5,
+  map:g51grid(),
+  entities:[
+    {kind:'anodes', x:6, y:12, n:4},
+    {kind:'anodes', x:28, y:9, n:4},
+    {kind:'order', x:31, y:9},
+    {kind:'anodes', x:44, y:12, n:4},
+    {kind:'anodes', x:52, y:12, n:4},
+    {kind:'anodes', x:56, y:9, n:4},
+    {kind:'order', x:77, y:7},                       // on the awning above the updraft
+    {kind:'anodes', x:76, y:7, n:4},
+    {kind:'anodes', x:86, y:12, n:4},
+    {kind:'mooncake', x:92, y:12},
+    {kind:'anodes', x:100, y:12, n:4},
+    {kind:'anodes', x:126, y:8, n:4},
+    {kind:'order', x:127, y:8},
+    {kind:'anodes', x:136, y:9, n:4},                // drops through the lantern line
+    {kind:'cee', x:154, y:9},
+    {kind:'anodes', x:155, y:10, n:4},
+    {kind:'enemy', type:'mouse',    x:30, y:13},
+    {kind:'enemy', type:'goblin',   x:56, y:13},
+    {kind:'enemy', type:'wave',     x:68, y:12, opt:{rng:36}},
+    {kind:'enemy', type:'betty',    x:90, y:13},
+    {kind:'enemy', type:'gascloud', x:96, y:12.0, opt:{seed:5.2, life:99999}},
+    {kind:'enemy', type:'scalper',  x:110, y:13},
+    {kind:'enemy', type:'wraith',   x:128, y:11},
+    {kind:'enemy', type:'wave',     x:142, y:12, opt:{rng:30}},
+    {kind:'pedestal', a:16, x:16, y:13.5},
+    {kind:'pedestal', a:32, x:144, y:13.5},
+    {kind:'npc', type:'store', x:5, y:13},
+    {kind:'npc', type:'sign', text:'夜市', sub:'NIGHT MARKET', x:10, y:13},
+    {kind:'npc', type:'sign', text:'扫码', sub:'SCAN', x:44, y:13},
+    {kind:'npc', type:'hotpot', x:72, y:13},
+    {kind:'npc', type:'dance', x:112, y:13},
+    {kind:'sitecheck', x:100, y:13},
+  ],
+}));
+
+// ---- Zone 6, Level 6-1: G318 High Pass (auto-scroll gauntlet, rockfall, whiteout surges, yak) ----
+function g61grid(){
+  const g = mkGrid(170);
+  g.holes([[40,43],[96,99]]);
+  const s = g.set;
+  for(let x=40;x<=43;x++) s(x,10,'L');             // lantern line over hole 1 (glide assist)
+  for(let x=54;x<=60;x++) s(x,11,'=');             // truck bed (butter tea deck)
+  for(let x=84;x<=90;x++) s(x,11,'^');             // cab roof route (gust-tearable)
+  for(let x=110;x<=118;x++) s(x,10,'L');
+  for(let x=124;x<=130;x++) s(x,9,'L');
+  s(135,12,'h');                                     // water heater (thaws the wraith)
+  s(146,13,'#');
+  s(148,12,'#'); s(148,13,'#');
+  s(150,11,'#'); s(150,12,'#'); s(150,13,'#');
+  s(151,11,'#'); s(151,12,'#'); s(151,13,'#');
+  for(let x=152;x<=158;x++) s(x,10,'#');            // summit plateau (flag)
+  return g.rows;
+}
+LEVELS.push(L({
+  id:'6-1', zone:6, label:'6-1', name:'G318 High Pass',
+  spawn:{x:2,y:9}, flag:{x:154,y:7},
+  palette:PALETTES.z6, music:6,
+  auto:true, snowY:190, gust:1,
+  map:g61grid(),
+  entities:[
+    {kind:'anodes', x:6, y:12, n:4},
+    {kind:'anodes', x:18, y:9, n:5},
+    {kind:'order', x:22, y:9},
+    {kind:'tea', x:57, y:10},                        // butter tea on the truck bed (cold immunity)
+    {kind:'anodes', x:56, y:10, n:4},
+    {kind:'anodes', x:45, y:12, n:4},
+    {kind:'anodes', x:74, y:12, n:5},
+    {kind:'order', x:82, y:12},
+    {kind:'anodes', x:92, y:9, n:4},
+    {kind:'anodes', x:108, y:9, n:5},
+    {kind:'order', x:120, y:9},
+    {kind:'anodes', x:126, y:8, n:5},
+    {kind:'anodes', x:148, y:10, n:4},
+    {kind:'cee', x:155, y:8},
+    {kind:'anodes', x:156, y:9, n:4},
+    {kind:'enemy', type:'goblin', x:64, y:13},
+    {kind:'enemy', type:'betty',  x:88, y:13},
+    {kind:'enemy', type:'goblin', x:104, y:13},
+    {kind:'enemy', type:'yak',    x:118, y:13, opt:{rng:36}},
+    {kind:'enemy', type:'wraith', x:130, y:11},
+    {kind:'enemy', type:'yak',    x:144, y:13, opt:{rng:28}},
+    {kind:'tunnel', x:76, y:14},
+    {kind:'charger', x:20, y:14},
+    {kind:'charger', x:106, y:14},
+    {kind:'pedestal', a:16, x:8, y:13.5},
+    {kind:'pedestal', a:16, x:70, y:13.5},
+    {kind:'pedestal', a:32, x:154, y:9.5},
+    {kind:'npc', type:'sign', text:'318国道', sub:'G318', x:12, y:13},
+    {kind:'npc', type:'sign', text:'慢行', sub:'SLOW', x:72, y:13},
+  ],
+}));
+
+function g7bgrid(){
+  const g = mkGrid(72);
+  const s = g.set;
+  // The Ghost's one-way service deck (row 10) — the Class A's roof; this is the ONLY safe zone
+  for(let x=40;x<=57;x++) s(x,10,'W');
+  // Class A body solid below the deck (rows 11-13): the parts-orphan's hull
+  for(let x=40;x<=56;x++){ s(x,11,'#'); s(x,12,'#'); s(x,13,'#'); }
+  return g.rows;
+}
+
+LEVELS.push(L({
+  final:true, id:'7-B', zone:7, label:'7-B', name:'Ghost Factory 幽灵车厂',
+  spawn:{x:2, y:9},
+  palette:PALETTES.z7, music:7,
+  bossIntro:'灰产幽灵 Ghost —— 检查灯不灭，活不算完。',
+  map:g7bgrid(),
+  entities:[
+    {kind:'anodes', x:5, y:13, n:4},
+    {kind:'cee', x:10, y:13},
+    {kind:'sealant', x:14, y:13},
+    {kind:'anodes', x:18, y:13, n:4},
+    {kind:'sealant', x:22, y:13},
+    {kind:'anodes', x:27, y:13, n:4},
+    {kind:'sealant', x:31, y:13},
+    {kind:'npc', type:'sign', text:'验收区', sub:'INSPECTION', x:36, y:13},
+    {kind:'boss', type:'ghost', x:40, y:14, w:18}
+  ]
+}));
+
+// Build per-level label list for HUD
+function syncZoneLevels(){ Game.zoneLevels={}; LEVELS.forEach((d,i)=>Game.zoneLevels[i]={label:d.label}); }
+syncZoneLevels();
+
+// ---- Zone 1 Boss: The Pop-Top Terror (Class B, pop-top roof slams like a jaw) ----
+function makeBoss(e){
+  const bx=e.x*TILE, deckY=e.y*TILE-64;      // deck = van top (one-way W tiles at this height)
+  const OPEN_Y=deckY-56, CLOSED_Y=deckY-8;   // panel top when open / flushed down
+  const b={
+    kind:'poptop', x:bx, w:80, deckY, deckX1:bx+128, y:e.y*TILE, h:64,
+    t:0, phase:'intro', phaseT:0, roofY:OPEN_Y,
+    hp:3, dead:false, deadT:0,
+    hinges:[10,36,62].map(dx=>({x:bx+dx, y:deckY-8, w:10, h:8, hp:1})),
+    update(dt){
+      const L=Game.level, p=Game.player;
+      const fr=dt*60;                             // motion is per-step; keep timers in frames
+      b.t+=fr; b.phaseT+=fr;
+      if(b.dead){
+        b.deadT+=fr;
+        b.roofY-=3;                            // panel pops off
+        if((b.t|0)%8===0) spawnParticles(b.x+Math.random()*b.w, deckY+20, 6, '#d9a44a', {up:1.6});
+        if(b.deadT>110 && !L.cleared) onLevelClear();
+        return;
+      }
+      const target = b.phase==='open'||b.phase==='windup'||b.phase==='intro'? OPEN_Y : CLOSED_Y;
+      if(b.roofY>target) b.roofY=Math.max(target,b.roofY-2.2);
+      else if(b.roofY<target) b.roofY=Math.min(target,b.roofY+2.2);
+      const DUR={intro:70, open:130, windup:45, slam:12, closed:70, lift:26}[b.phase]||9999;
+      if(b.phaseT>=DUR){
+        b.phaseT=0;
+        const nx={intro:'open', open:'windup', windup:'slam', slam:'closed', closed:'lift', lift:'open'}[b.phase];
+        if(nx){
+          b.phase=nx;
+          if(nx==='windup'){ AudioEngine.sfx('charge'); spawnFloatFx('!', b.x+b.w/2, OPEN_Y-24, '#ff5a4a'); }
+          if(nx==='slam'){ Game.shake=Math.max(Game.shake,10); AudioEngine.sfx('slam'); spawnParticles(b.x+b.w/2, CLOSED_Y, 14, '#cfe8ff', {up:1.1}); }
+          if(nx==='open'){ AudioEngine.sfx('pop'); }
+        }
+      }
+      // slam sweep is fast
+      if(b.phase==='slam') b.roofY=Math.min(CLOSED_Y, b.roofY+(CLOSED_Y-OPEN_Y)/12);
+      if(p&&!p.dead){
+        // crush: panel rect vs player while slamming or flushed down
+        const cz={x:b.x+6, y:b.roofY, w:b.w-12, h:8};
+        if((b.phase==='slam'||b.phase==='closed'||b.phase==='lift') && p.invuln<=0 && p.surge<=0 && rectHit(p,cz.x,cz.y,cz.w,cz.h)) killPlayerFn(p,'crush');
+        // stomp the gas-strut hinges while roof is open
+        if(b.phase==='open'||b.phase==='intro'){
+          for(const hg of b.hinges){
+            if(hg.hp<=0) continue;
+            if(rectHit(p,hg.x,hg.y,hg.w,hg.h) && p.vy>0.3 && (p.y+p.h)-hg.y<9){
+              hg.hp=0; b.hp--; p.vy=-STOMP_BOUNCE*1.2;
+              spawnParticles(hg.x+5,hg.y+4,12,'#ffd24a',{up:1.5});
+              AudioEngine.sfx('clang');
+              spawnFloatFx('铰链 HINGE ×'+Math.max(0,b.hp), hg.x-6, hg.y-14, '#ffd24a');
+              if(b.hp<=0){
+                b.dead=true; b.deadT=0; Game.shake=14; AudioEngine.sfx('kill');
+                spawnParticles(b.x+b.w/2, deckY+16, 30, '#d9a44a', {up:2});
+              }
+            }
+          }
+        }
+      }
+    },
+    draw(){
+      const cam=Camera.x, x=Math.round(b.x-cam), deck=b.deckY;
+      const shake=(b.phase==='windup')? (Math.random()*2-1) : (b.phase==='slam'? (Math.random()*3-1.5):0);
+      // van body (Class B)
+      ctx.fillStyle='#2a2c30';                 // wheels
+      ctx.beginPath(); ctx.arc(x+18, deck+57, 7, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(x+62, deck+57, 7, 0, 7); ctx.fill();
+      ctx.fillStyle='#e8e2d0';                 // body
+      ctx.fillRect(x+2, deck, b.w-4, 54);
+      ctx.fillStyle='#cfc8b2'; ctx.fillRect(x+2, deck+34, b.w-4, 4);
+      ctx.fillStyle='#9fd8e8';                 // windshield
+      ctx.fillRect(x+4, deck+8, 12, 14);
+      ctx.fillStyle='#fff';                    // angry eye
+      ctx.fillRect(x+6, deck+14, 5, 3);
+      ctx.fillStyle=(b.phase==='windup'||b.phase==='slam')?'#ff5a4a':'#222';
+      ctx.fillRect(x+7, deck+15, 3, 2);
+      // gas-strut hinges on deck (exposed when roof open)
+      for(const hg of b.hinges){
+        if(hg.hp<=0) continue;
+        ctx.fillStyle='#ffd24a';
+        ctx.fillRect(Math.round(hg.x-cam), deck-8, 10, 8);
+        ctx.fillStyle='#8a6a1a';
+        ctx.fillRect(Math.round(hg.x-cam)+2, deck-5, 6, 3);
+      }
+      // service ramp (right of the van, safe from the roof)
+      ctx.fillStyle='#3a3d42';
+      ctx.fillRect(x+b.w, deck, b.deckX1-b.x-b.w, 8);
+      ctx.fillStyle='#26282c';
+      ctx.fillRect(x+b.w+18, deck+8, 6, 48);
+      // pop-top panel
+      const ry=Math.round(b.roofY+shake);
+      ctx.fillStyle='#b8452f';
+      ctx.fillRect(x+6, ry, b.w-12, 8);
+      ctx.fillStyle='#8a2f1f'; ctx.fillRect(x+6, ry+6, b.w-12, 2);
+      ctx.strokeStyle='#5a4632'; ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.moveTo(x+14, deck-4); ctx.lineTo(x+14, ry+8);
+      ctx.moveTo(x+66, deck-4); ctx.lineTo(x+66, ry+8);
+      ctx.stroke();
+    },
+  };
+  return b;
+}
+
+// ---- ZONE 7 FINAL BOSS: 灰产幽灵 Gray-Market Ghost ----
+// The last unlicensed Class A leaves the lot as a parts-orphan: every panel is a
+// "to be continued". You climb onto its roof (the one-way deck above the hull) and
+// finish three open jobs to make it roadworthy. Each job is a phase:
+//   P1 12V 直流  battery tripping   -> stomp the under-dash fuse (3x), kill the interior lights
+//   P2 220V 交流 A/C dive-bombs     -> 220V transfer switch (arc the panel in open air)
+//   P3 水路  plumbing  sludge       -> cap 3 roof penetrations with sealant
+// All attacks are ground-level, in front of the van; the deck is the ONLY safe zone.
+// Victory: the 检查引擎 (check-engine) light dies, a forklift rolls the orphan in,
+// a 验收合格 (PASSED) sticker is slapped on, and "JOB CLOSED, NO PARTS PENDING".
+function makeGhost(e){
+  const bx=e.x*TILE, deckY=e.y*TILE-64, BW=(e.w||18)*TILE, GROUND=deckY+64;
+  const b={
+    x:bx, w:BW, deckY, y:deckY, h:GROUND-deckY,
+    type:'ghost',
+    phase:1, boardT:0, boarded:false,
+    sw:{x:bx+4*TILE, y:deckY-8, w:12, h:8, hp:3, hit:false},    // P1 fuse (stomp 3x)
+    panel:{x:bx+7*TILE, y:deckY-22, w:14, h:18, hit:false},     // P2 panel (open air)
+    peels:null, sealTargets:null,
+    check:true, dead:false, deadT:0,
+    sparks:[], ac:null, shockT:0, sludgeT:0, _sludge:null, _jab:null, _f1:0, _jp:0,
+    bob:0,
+    hurt(){ b.check=false; },
+    onDeck(p){ const f=p.y+p.h; return p.onGround && Math.abs(f-deckY)<8; },
+  };
+  b.peels=[0,6,12].map(dx=>({ x:bx+10*TILE+6+dx, y:deckY-7, w:8, h:7, capped:false }));
+
+  function alive(){ return Game.player && !Game.player.dead; }
+  function touch(p,r){ return rectHit(p, r.x, r.y, r.w, r.h); }
+
+  b.update=function(dt){
+    if(b.dead){
+      b.deadT++;
+      if(b.deadT>150 && Game.state==='play'){ Game.level.cleared=true; Game.state='done'; AudioEngine.stopMusic(); }
+      else if(b._jab) stepJab();
+      return;
+    }
+    b.bob++;
+     // board tracking: no attacks until the tech is actually on the deck (a lead-in beat).
+     // Latch "armed" once the lead-in completes so the fuse/panel seals can still be whacked
+     // mid-air (a stomp is airborne, which momentarily un-boards the tech).
+     if(alive()){ if(b.onDeck(Game.player)){ if(!b.boarded) b.boardT=0; b.boarded=true; b.boardT++; } else b.boarded=false; }
+     if(b.boardT>30) b.armed=true;
+     const canAct = !!b.armed;
+    // seal targets only while capping (P3)
+    b.sealTargets = (b.phase===3 && !b.dead) ? b.peels : null;
+    if(b.phase===1) ph1(canAct);
+    else if(b.phase===2) ph2(canAct);
+    else ph3(canAct);
+    // cull ground jabs/sludge even when idle so nothing lingers forever
+    stepJab();
+    // advance phase on victory of each job
+    if(b.phase===1 && b.sw.hit){ b.phase=2; b.check=true; AudioEngine.sfx('charge'); spawnFloatFx('断路!', bx+2*TILE, deckY-30, '#ffd24a'); }
+    else if(b.phase===2 && b.panel.hit){ b.phase=3; b.ac=null; b.shockT=0; AudioEngine.sfx('charge'); spawnFloatFx('泄压!', bx+7*TILE, deckY-34, '#7fd8ff'); }
+  };
+
+  function stepJab(){
+    const j=b._jab; if(!j) return;
+    j.t--; j.x+=j.vx;
+    if(j.t<=0) b._jab=null;
+    else if(alive() && touch(Game.player, j)) hurtPlayer(Game.player,1);
+  }
+  function stepSludge(){
+    const s=b._sludge; if(!s) return;
+    s.t--; s.x+=s.vx;
+    if(s.t<=0) b._sludge=null;
+    else if(alive() && touch(Game.player, s)) hurtPlayer(Game.player,1);
+  }
+
+  // ---- P1: 12V DC spark orbs. Stomp the fuse 3x to kill the interior lights. ----
+  function ph1(canAct){
+    for(let i=b.sparks.length-1;i>=0;i--){
+      const s=b.sparks[i]; s.t--; s.x+=s.vx; s.y+=s.vy;
+      if(s.t<=0){ b.sparks.splice(i,1); continue; }
+      if(alive() && touch(Game.player, {x:s.x-6,y:s.y-4,w:12,h:8})) hurtPlayer(Game.player,1);
+    }
+    if(canAct){
+      if(b._f1===0){
+        const n=1+(Math.random()<0.4?1:0);
+        for(let i=0;i<n;i++) b.sparks.push({x:bx-8, y:deckY+44+(Math.random()*14|0), vx:1.3+i*0.3, vy:0, t:170});
+        b._f1=70; AudioEngine.sfx('spark');
+      }
+      b._f1--;
+      if(!b.sw.hit && alive()){
+        const p=Game.player;
+        if(touch(p,{x:b.sw.x-2,y:b.sw.y-22,w:b.sw.w+4,h:22+b.sw.h}) && (p.y+p.h)-b.sw.y < 12 && p.vy>0.3){
+          b.sw.hp--; AudioEngine.sfx('clang'); Game.shake=Math.max(Game.shake,5);
+          spawnParticles(b.sw.x+b.sw.w/2, b.sw.y, 6, '#ffd24a', {up:1});
+          if(b.sw.hp<=0){ b.sw.hit=true; b.sparks.length=0; AudioEngine.sfx('power2'); Game.shake=Math.max(Game.shake,9); spawnFloatFx('断路', b.sw.x, b.sw.y-10, '#ffd24a'); }
+        }
+      }
+    }
+  }
+
+  // ---- P2: 220V A/C dive-bombs + GROANGEN shockwaves. Arc the 220V panel. ----
+  function ph2(canAct){
+    for(let i=b.sparks.length-1;i>=0;i--){
+      const s=b.sparks[i]; s.t--; s.x+=s.vx; s.y+=s.vy; s.vy+=0.06;
+      if(s.t<=0 || s.y>GROUND-2){ b.sparks.splice(i,1); continue; }
+      if(alive() && touch(Game.player, {x:s.x-3,y:s.y-3,w:8,h:8})) hurtPlayer(Game.player,1);
+    }
+    if(!canAct) return;
+    if(!b.ac){ b.ac={x:bx-60, y:deckY+38, t:0, cd:50}; AudioEngine.sfx('hiss'); }
+    const A=b.ac; A.t++; A.cd--;
+    A.x += ((bx-40)>A.x? 0.5 : -0.5);
+    if(A.cd<=0 && A.t>30){
+      for(let i=0;i<5;i++) b.sparks.push({x:A.x+i*8, y:A.y, vx:0, vy:1.0+i*0.15, t:160});
+      A.cd=95; b.shockT=1; AudioEngine.sfx('spark');
+    }
+    if(A.t>720) b.ac=null;
+    if(b.shockT>0 && b.shockT<42){
+      b.shockT++;
+      if(b.shockT===20 && alive() && Game.player.x < bx-30) hurtPlayer(Game.player,1); // GROANGEN front-blow
+    }
+  }
+
+  // ---- P3: plumbing sludge + Drip Goblins + slide punches. Cap the roof penetrations. ----
+  function ph3(canAct){
+    if(!canAct) return;
+    b.sludgeT++;
+    if(b.sludgeT===1){ b._sludge={x:bx-30, y:GROUND-12, vx:-0.5, t:260, w:16, h:12}; AudioEngine.sfx('drip'); }
+    stepSludge();
+    if((b.sludgeT%150)===1 && Game.level.enemies.length<3){ Game.level.enemies.push(makeEnemy('goblin', bx-16, GROUND-13, {f:-1})); AudioEngine.sfx('drip'); }
+    b._jp++;
+    if(b._jp%90===1){ b._jab={x:bx-8, y:deckY+34, vx:-2.4, t:60, w:14, h:10}; AudioEngine.sfx('hiss'); }
+    if(b.peels.every(pe=>pe.capped)){
+      b.dead=true; b.deadT=0; Game.shake=16; AudioEngine.sfx('kill');
+      spawnParticles(bx+BW/2, deckY, 40, '#9be7a4', {up:1.6});
+    }
+  }
+
+  b.draw=function(camX){
+    const x=b.x-camX, top=b.y, bh=b.h;
+    const C=Game.level.palette;
+    ctx.save();
+    ctx.globalAlpha = b.dead? Math.max(0,1-b.deadT/70) : 0.92;
+    const bodyTop=top+6, bodyH=bh-6;
+    ctx.fillStyle = C.blockShade; rrect(x+10, bodyTop, b.w-20, bodyH, 6); ctx.fill();   // hull
+    ctx.fillStyle = '#dfe8f2'; rrect(x+14, bodyTop+3, b.w-28, 12, 4); ctx.fill(); // roof cap
+    ctx.fillStyle = C.blockShade; rrect(x+18, bodyTop+18, 22, 18, 3); ctx.fill();       // windshield
+    for(let i=0;i<4;i++){ ctx.fillStyle='#c2d2e2'; ctx.fillRect(x+56+i*28, bodyTop+20, 18, 12); }
+    ctx.fillStyle = C.ground;
+    ctx.beginPath(); ctx.arc(x+40, top+bh, 9, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(x+b.w-44, top+bh, 9, 0, 7); ctx.fill();
+    // headlight
+    ctx.fillStyle = b.check? '#ffc23a':'#6b7280'; ctx.fillRect(x+12, bodyTop+10, 6, 6);
+    // 检查引擎 (CHECK ENGINE) indicator lamp — the amber light that must die
+    ctx.fillStyle = b.check? '#ff8a3a':'#4b5563'; ctx.fillRect(x+b.w-26, bodyTop+5, 14, 8);
+    if(b.check && !b.dead){ ctx.fillStyle='rgba(255,138,58,'+(0.35+0.5*Math.abs(Math.sin(b.bob*0.15)))+')'; ctx.fillRect(x+b.w-28, bodyTop+3, 18, 12); }
+    // P1 interior lights strobe + 12V spark bolts
+    if(b.phase===1 && !b.sw.hit){
+      const on=(b.bob>>3)&1; ctx.fillStyle = on? '#0c1016':'#3a2b1a';
+      for(let i=0;i<5;i++) ctx.fillRect(x+30+i*42, bodyTop+28, 26, 8);
+      for(const s of b.sparks){ if(s.vy===0){ ctx.fillStyle='#ffd24a'; ctx.fillRect(s.x-camX, s.y, 11, 4); ctx.fillStyle='#fff7cf'; ctx.fillRect(s.x-camX+2, s.y-1, 7, 2); } }
+    }
+    // P1 fuse switch
+    if(b.phase===1){ const s=b.sw; ctx.fillStyle = s.hit? '#3a4a3a':'#5a5a6a'; ctx.fillRect(s.x-camX, s.y, s.w, s.h); ctx.fillStyle = s.hit? '#9be7a4':'#ff5a4a'; ctx.fillRect(s.x-camX+3, s.y+2, s.w-6, s.h-4); }
+    // P2: 220V panel (open air), A/C condenser, AC orbs, GROANGEN shockwave
+    if(b.phase===2 && !b.panel.hit){
+      const p=b.panel; ctx.fillStyle = '#5a4a2a'; ctx.fillRect(p.x-camX, p.y, p.w, p.h);
+      ctx.fillStyle = '#ffcf3a'; ctx.fillRect(p.x-camX+3, p.y+3, p.w-6, 3);
+      ctx.fillStyle='#1a1a1a'; ctx.fillRect(p.x-camX+3, p.y+8, p.w-6, p.h-11);
+      ctx.strokeStyle='#ffe08a'; ctx.strokeRect(p.x-camX, p.y, p.w, p.h);
+      if(b.ac){ const A=b.ac; ctx.fillStyle='#8fa8c8'; ctx.fillRect(A.x-camX-8, A.y-8, 24, 16); ctx.fillStyle='#2a2a2a'; ctx.fillRect(A.x-camX-6, A.y-6, 20, 4); if((b.bob>>2)&1){ ctx.fillStyle='#7fd8ff'; ctx.fillRect(A.x-camX+2, A.y+2, 4, 4);} }
+      for(const s of b.sparks){ ctx.fillStyle='#7fd8ff'; ctx.fillRect(s.x-camX, s.y, 5, 5); ctx.fillStyle='#eaffff'; ctx.fillRect(s.x-camX+1, s.y+1, 3, 3); }
+    }
+    if(b.shockT>0 && b.shockT<42){
+      const r=b.shockT*2.2; ctx.strokeStyle='rgba(127,216,255,'+(1-b.shockT/42)+')';
+      ctx.beginPath(); ctx.arc((bx-50)-camX, GROUND, r, Math.PI, 2*Math.PI); ctx.stroke();
+    }
+    // P3: roof penetrations, sludge, slide jab, goblins (drawn as enemies)
+    if(b.phase===3 || b.dead){
+      for(const pe of b.peels){
+        ctx.fillStyle = pe.capped? '#9be7a4':'#7a5a3a';
+        ctx.beginPath(); ctx.ellipse(pe.x-camX+pe.w/2, pe.y+pe.h/2, pe.w/2, pe.h/2, 0, 0, 7); ctx.fill();
+        if(!pe.capped){ ctx.strokeStyle='#c98a4a'; ctx.stroke(); }
+      }
+      if(b._sludge){ const s=b._sludge; ctx.fillStyle='#4a3520'; ctx.beginPath(); ctx.ellipse(s.x-camX+s.w/2, s.y+s.h/2, s.w/2, s.h/2+3, 0,0,7); ctx.fill(); }
+      if(b._jab){ const j=b._jab; ctx.fillStyle='#c98a4a'; ctx.fillRect(j.x-camX, j.y, j.h, j.h); }
+    }
+    // VICTORY: forklift rolls in, 验收合格 sticker slaps on
+    if(b.dead){
+      const ft=Math.min(1, b.deadT/90);
+      const fx = -40 + ft*(bx-50);
+      ctx.fillStyle='#e0a335'; ctx.fillRect(fx-camX, GROUND-16, 34, 16);
+      ctx.fillStyle='#1a1a1a'; ctx.fillRect(fx-camX+3, GROUND-2, 10, 4); ctx.fillRect(fx-camX+22, GROUND-2, 10, 4);
+      ctx.fillStyle='#8a5a2a'; ctx.fillRect(fx-camX+30, GROUND-30, 4, 30);
+      if(ft>0.78){
+        ctx.globalAlpha=Math.min(1,(b.deadT-70)/20);
+        ctx.fillStyle='#7a2a2a'; rrect(x+b.w/2-16, bodyTop+1, 32, 14, 3); ctx.fill();
+        ctx.fillStyle='#ffe9e9'; ctx.font='9px monospace'; ctx.textAlign='center';
+        ctx.fillText('验收合格', x+b.w/2, bodyTop+12);
+        ctx.globalAlpha=1;
+      }
+    }
+    ctx.restore();
+  };
+
+  return b;
+}
+
+// ---- spawn level actors from def entities ----
+function spawnLevelActors(Lv){
+  Lv.items=[];
+  const evs=Lv.entities||[];
+  evs.forEach(e=>{
+    const px=e.x*TILE, py=e.y*TILE;
+    if(e.kind==='anodes'){ for(let i=0;i<e.n;i++) Lv.items.push(makeItem('anode', px+i*14, py, 1)); }
+    else if(e.kind==='flag'){}
+    else if(e.kind==='order' || e.kind==='sealant' || e.kind==='torque' || e.kind==='cee'
+          || e.kind==='surge' || e.kind==='shield' || e.kind==='impact' || e.kind==='tea'
+          || e.kind==='oneup' || e.kind==='mooncake' || e.kind==='grease' || e.kind==='part'){
+      Lv.items.push(makeItem(e.kind, px, py, 1));
+    }
+    else if(e.kind==='npc'){ Lv.npcs.push(makeNPC(e.type, px, py)); }
+    else if(e.kind==='pedestal'){ Lv.npcs.push({type:'pedestal', a:e.a||16, x:px, y:py, w:14, h:26, used:false, t:0, pulse:0, draw:fn_npcdraw}); }
+    else if(e.kind==='dump'){ Lv.dumpRoom = {x:px, y:py, black:false, solved:false, failed:false, flood:0, t:0}; }
+    else if(e.kind==='boss'){ if(e.type==='ghost') Lv.boss = makeGhost(e); else Lv.boss = makeBoss(e); }
+    else if(e.kind==='enemy'){ Lv.enemies.push(makeEnemy(e.type, px, py, e.opt||{})); }
+    else if(e.kind==='seesaw'){ Lv.gadgets.push({type:'seesaw', x:px, y:py, w:144, t:0, angle:0, ride:0, draw:fn_gadgetdraw}); }
+    else if(e.kind==='partgate'){ Lv.gadgets.push({type:'partgate', x:px, y:py, w:16, h:48, opened:false, t:0, draw:fn_gadgetdraw}); }
+    else if(e.kind==='sitecheck'){ Lv.gadgets.push({type:'sitecheck', x:px, y:py, done:false, qte:null, t:0, draw:fn_gadgetdraw}); }
+    else if(e.kind==='tunnel'){ Lv.gadgets.push({type:'tunnel', x:px, y:py, w:48, ceil:py-196, cd:0, draw:fn_gadgetdraw}); }
+    else if(e.kind==='lift'){ Lv.gadgets.push({type:'lift', x:px, baseY:py, y:py, w:48, t:0, draw:fn_gadgetdraw}); }
+    else if(e.kind==='spinner'){ Lv.gadgets.push({type:'spinner', cx:px+16, cy:py+16, r:e.r||36, t:0, px:0, py:0, draw:fn_gadgetdraw}); }
+    else if(e.kind==='charger'){ Lv.npcs.push({type:'charger', x:px, y:py, t:0, w:20, h:30, draw:fn_npcdraw}); }
+  });
+  // open vents (tile 'V') drip goblins until capped
+  Lv.vents=[];
+  for(let ty=0;ty<Lv.h;ty++)for(let tx=0;tx<Lv.w;tx++) if(Lv.grid[ty][tx]==='V') Lv.vents.push({tx,ty});
+}
+function makeItem(type,x,y){
+  return {type, x, y, t:Math.random()*6, r:7, active:true, vx:0, vy:0, grounded:false};
+}
+function makeNPC(type,x,y){
+  return {type, x, y, t:0, w:14, h:24, draw:fn_npcdraw};
+}
+function fn_npcdraw(){
+  const np=this, x=Math.round(np.x-Camera.x), y=Math.round(np.y-Camera.y);
+  np.t+=0.1;
+  if(np.type==='sign'){
+    // wooden bilingual signpost
+    ctx.fillStyle='#8a5a2a'; ctx.fillRect(x+6, y-12, 4, 24);
+    ctx.fillStyle='#e8d5a8'; ctx.fillRect(x-8, y-30, 32, 20);
+    ctx.fillStyle='#b0925a'; ctx.fillRect(x-8, y-30, 32, 2); ctx.fillRect(x-8, y-12, 32, 2);
+    drawText(np.text||'营地', x+8, y-19, '#3a2410', 10, true, true);
+    if(np.sub) drawText(np.sub, x+8, y-12, '#6a4a20', 0, false, true);
+  } else if(np.type==='pedestal'){
+    // camp power pedestal (checkpoint)
+    const a=np.a||16;
+    ctx.fillStyle='#d8dde2'; ctx.fillRect(x, y-30, 14, 32);
+    ctx.fillStyle='#9aa2aa'; ctx.fillRect(x, y-30, 14, 3);
+    ctx.fillStyle= np.used? '#33d17a':'#c93';
+    ctx.fillRect(x+3, y-23, 8, 8);
+    ctx.fillStyle='#1e5fff';
+    ctx.beginPath(); ctx.arc(x+7, y-19, 3, 0, 7); ctx.fill();
+    if(np.pulse>0 && Math.floor(np.t*4)%2===0){ ctx.fillStyle='rgba(120,220,255,'+Math.max(0,0.5-np.pulse/60)+')'; ctx.fillRect(x-4,y-34,22,38); }
+    drawText(a+'A', x-2, y+10, '#445', 0);
+  } else if(np.type==='store'){
+    // camp store kiosk
+    ctx.fillStyle='#c9a15a'; ctx.fillRect(x, y-10, 40, 4);
+    ctx.fillStyle='#8a5a2a'; ctx.fillRect(x+2,y-6,6,26); ctx.fillRect(x+32,y-6,6,26);
+    ctx.fillStyle='#f2e4c0'; ctx.fillRect(x+8,y-2,24,20);
+    drawText('小卖部', x+9, y+8, '#5a3a1a', 8, true);
+    drawText('STORE', x+16, y+18, '#3a2a14', 0);
+  } else if(np.type==='xiangqi'){
+    ctx.fillStyle='#6a5a4a'; ctx.fillRect(x, y+6, 26, 4); // stone table
+    ctx.fillStyle='#3a6a9a'; ctx.fillRect(x+2,y-6,8,12); // retiree 1
+    ctx.fillStyle='#a04a3a'; ctx.fillRect(x+16,y-6,8,12); // retiree 2
+    ctx.fillStyle='#e8d0a0'; ctx.beginPath(); ctx.arc(x+6,y-9,3,0,7); ctx.fill();
+    ctx.fillStyle='#e8d0a0'; ctx.beginPath(); ctx.arc(x+20,y-9,3,0,7); ctx.fill();
+    ctx.fillStyle='#3a3a3a'; ctx.fillRect(x+10,y+4,4,4); // board
+  } else if(np.type==='hotpot'){
+    ctx.fillStyle='#7a3a2a'; ctx.fillRect(x, y+2, 28, 8);
+    ctx.fillStyle='#3a3a3a'; ctx.fillRect(x+4,y-4,20,6);
+    ctx.fillStyle='rgba(255,255,255,.5)'; for(let i=0;i<4;i++){ const sy=y-8-((np.t*4+i*6)%12); ctx.fillRect(x+8+i*4, sy,2,3); } // steam
+  } else if(np.type==='dance'){
+    for(let i=0;i<4;i++){ const ox=Math.sin(np.t*2+i)*4; ctx.fillStyle=['#c0392b','#2980b9','#27ae60','#8e6bb0'][i]; ctx.fillRect(x+i*8+ox, y+2,5,12); ctx.fillStyle='#f0d9b8'; ctx.fillRect(x+i*8+ox+1,y-2,3,4); }
+  } else if(np.type==='charger'){
+    // EV fast-charge bank: a pillar of chargers with a glowing screen
+    ctx.fillStyle='#2f4a6a'; ctx.fillRect(x, y-26, 20, 28);
+    ctx.fillStyle='#1e3348'; ctx.fillRect(x, y-26, 20, 4);
+    ctx.fillStyle='#7fe8a8'; ctx.fillRect(x+3,y-18,14,10);
+    ctx.fillStyle='#1e5f3c'; ctx.fillRect(x+4,y-15,12,1); ctx.fillRect(x+4,y-12,9,1);
+    ctx.fillStyle='#cfe8ff'; ctx.fillRect(x+17,y-4,3,10);
+    if(np.t%2<1){ ctx.fillStyle='#d8ffee'; ctx.fillRect(x+5,y-16,6,3); }
+  }
+}
+
+// ===== SECTION: RENDER ===================================
+let GamE_anim=0;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled=false;
+
+function scaleCanvas(){
+  const wrap=document.getElementById('wrap');
+  const ww=wrap.clientWidth, wh=wrap.clientHeight;
+  const scale=Math.min(ww/VIEW_W, wh/VIEW_H);
+  canvas.style.width=(VIEW_W*scale)+'px';
+  canvas.style.height=(VIEW_H*scale)+'px';
+  ctx.imageSmoothingEnabled=false;
+}
+window.addEventListener('resize',scaleCanvas);
+
+function drawText(txt,x,y,color,size,cjk,center){
+  ctx.font = cjk? (size>=10?CJK_FONT_L:CJK_FONT) : PIX_FONT;
+  ctx.fillStyle=color||'#fff';
+  if(center){ ctx.textAlign='center'; } else { ctx.textAlign='left'; }
+  ctx.fillText(txt,Math.round(x),Math.round(y));
+  ctx.textAlign='left';
+}
+function drawPlayer(p){
+  const x=Math.round(p.x-Camera.x), y=Math.round(p.y-Camera.y);
+  const f=p.facing;
+  // body (coveralls)
+  ctx.fillStyle = p.invuln>0 && (Math.floor(Game.timer*20)%2)? '#fff':'#2f6fb0';
+  ctx.fillRect(x, y+ (p.crouch?0:2), p.w, p.h-(p.crouch?0:2));
+  // head
+  if(Game.power>0){ // hard hat (16A/32A)
+    ctx.fillStyle='#f2c94c';
+    ctx.fillRect(x-1,y- (p.crouch?0:2), p.w+2, 3);
+    ctx.fillStyle= Game.power===2? '#1e5fff':'#e0a800';
+    ctx.fillRect(x,y-1 -(p.crouch?0:2),p.w,2);
+  }
+  // face
+  ctx.fillStyle= Game.power>0? '#f0d9b8':'#333';
+  ctx.fillRect(x+ (f>0?2:1), y+3, 7, 3);
+  ctx.fillStyle='#111';
+  ctx.fillRect(x+(f>0?6:1), y+3,1,2);
+  // QR phone: held up scanning a toll-gate door
+  if(Game.qr){
+    const qx = f>0? x+p.w+1 : x-5;
+    ctx.fillStyle='#222'; ctx.fillRect(qx, y+1, 4, 8);
+    ctx.fillStyle='#7ff0e8'; ctx.fillRect(qx+1, y+2, 2, 4);
+    const gxs=Math.round(Game.qr.x - Camera.x);
+    ctx.strokeStyle='rgba(127,240,232,.8)'; ctx.lineWidth=2;
+    ctx.beginPath();
+    if(f>0){ ctx.moveTo(qx+4,y+4); ctx.lineTo(gxs,y+4); }
+    else { ctx.moveTo(qx,y+4); ctx.lineTo(gxs+16,y+4); }
+    ctx.stroke();
+    drawText('扫码…', qx-4, y-6, '#7ff0e8', 8, true);
+  }
+  // cog: bearing-grease slide pose
+  if(p.slideT>0){
+    ctx.fillStyle='#c8c255'; ctx.fillRect(x-4,y+p.h-2,p.w+8,2);
+  }
+  // surge protector/EMS: glow + cycling readout
+  if(p.surge>0){
+    const ph=Math.floor(Game.timer*3)%3;
+    const label = ph===0? '电压正常' : ph===1? 'VOLTAGE OK' : 'GROUND OK';
+    ctx.strokeStyle = (Math.floor(Game.timer*12)%2)? '#6cf':'#fff';
+    ctx.lineWidth=1;
+    ctx.strokeRect(x-2,y-3,p.w+4,p.h+5);
+    drawText(label, x+p.w/2-16, y-7, '#7ff0e8', 8, ph===0, false);
+  }
+  // butyl & sealant shield: white tape roll on the back
+  if(p.shield){
+    const bx = f>0? x-3 : x+p.w+1;
+    ctx.fillStyle='#f4f2ea'; ctx.beginPath(); ctx.arc(bx+1, y+7, 4, 0, 7); ctx.fill();
+    ctx.fillStyle='#b8b2a4'; ctx.beginPath(); ctx.arc(bx+1, y+7, 1.5, 0, 7); ctx.fill();
+  }
+  // impact driver on the back (x2 swing speed)
+  if(p.impact>0){
+    const bx = f>0? x-3 : x+p.w+1;
+    if(!p.shield){
+      ctx.fillStyle='#222'; ctx.fillRect(bx, y+5, 3, 7);
+      ctx.fillStyle='#0ff'; ctx.fillRect(bx, y+4, 3, 2);
+    }
+  }
+  // wrench swing
+  if(p.swing>0){
+    ctx.strokeStyle= Game.power>=2? '#bfe0ff':'#cfd6e0'; ctx.lineWidth=2;
+    const sx=x+(f>0? p.w:0);
+    const t=1-p.swing/Math.max(1,(p.impact>0?6:10));
+    ctx.beginPath();
+    ctx.moveTo(sx, y+6);
+    ctx.lineTo(sx + f*(6+10*t), y+ (4-8*Math.sin(t*Math.PI)) );
+    ctx.stroke();
+    if(Game.power>=2 && (Math.floor(Game.timer*30)%2)){ // 32A: wrench crackles
+      const tx0=sx + f*(6+10*t), ty0=y+(4-8*Math.sin(t*Math.PI));
+      ctx.fillStyle='#9fd0ff'; ctx.fillRect(tx0-1,ty0-2,2,2); ctx.fillRect(tx0+f*2,ty0+1,2,1);
+    }
+  }
+}
+function render(){
+  ctx.fillStyle='#0b0e14'; ctx.fillRect(0,0,VIEW_W,VIEW_H);
+  if(Game.state==='play'||Game.state==='paused'){
+    renderLevel();
+    if(!Game.player.dead) drawPlayer(Game.player);
+    else drawDeadPlayer(Game.player);
+    renderHUD();
+    if(Game.state==='play'&&Game._introT>0&&Game.level.bossIntro) renderBossIntro();
+    if(Game.state==='paused') renderPause();
+  } else if(Game.state==='title'){
+    renderTitle();
+  } else if(Game.state==='map'){
+    renderMap();
+  } else if(Game.state==='over'){
+    renderGameOver();
+  } else if(Game.state==='clear'){
+    renderTitle(); renderClear();
+  } else if(Game.state==='done'){
+    renderLevel();
+    if(Game.player && !Game.player.dead) drawPlayer(Game.player);
+    renderHUD();
+    renderDone();
+  } else {
+    renderTitle();
+  }
+}
+function renderClear(){
+  const L=Game.level;
+  ctx.fillStyle='rgba(10,6,24,.72)'; ctx.fillRect(0,0,VIEW_W,VIEW_H);
+  drawBigText('完工 SERVICE COMPLETE', VIEW_W/2, 90);
+  const rodFireworks = Math.floor(GamE_anim*3)%6;
+  ctx.fillStyle=['#ffd266','#ff7a2a','#6cf','#33d17a'][rodFireworks%4];
+  for(let i=0;i<14;i++){ const a=GamE_anim*2+i; ctx.fillRect(VIEW_W/2+Math.cos(a)*40*Math.sin(GamE_anim+i), 120+Math.sin(a)*30,2,2); }
+  const timeBonus=Math.max(0,Math.ceil(L.clearedAt))*2;
+  const orders=Game.servicesFound.filter(s=>s.level===Game.levelIndex).length;
+  drawText('TIME BONUS  +'+timeBonus, VIEW_W/2, 160, '#ffd266', 0, false, true);
+  drawText('ANODE RODS  '+Game.anodes, VIEW_W/2, 176, '#dfe8f2', 0, false, true);
+  drawText('SERVICE ORDERS  '+orders+' / 3  '+(orders>=3?'完工 / JOB CLOSED':''), VIEW_W/2, 192, '#8fe3b0', 0, false, true);
+  Game.anodes+=Math.max(0,timeBonus-Math.max(0,L._bonusGiven||0)); L._bonusGiven=timeBonus;
+    if(Game._clearT>1.2) drawText('Press Enter / tap to continue', VIEW_W/2, 236, '#8fa6d6', 0, false, true);
+}
+function renderBossIntro(){
+  const a=Math.min(1, Game._introT/30);
+  ctx.save(); ctx.globalAlpha=a;
+  ctx.fillStyle='rgba(8,6,14,.86)'; ctx.fillRect(0,40,VIEW_W,54);
+  ctx.fillStyle='rgba(255,138,58,.5)'; ctx.fillRect(0,40,VIEW_W,2); ctx.fillRect(0,92,VIEW_W,2);
+  drawText(Game.level.bossIntro, VIEW_W/2, 66, '#ffe9e9', 12, true, true);
+  drawText(Game.level.id+'  ·  FINAL BOSS', VIEW_W/2, 86, '#ff8a3a', 8, false, true);
+  ctx.restore();
+}
+function renderDone(){
+  const L=Game.level;
+  ctx.fillStyle='rgba(10,6,24,.80)'; ctx.fillRect(0,0,VIEW_W,VIEW_H);
+  drawBigText('验收合格 JOB CLOSED', VIEW_W/2, 78);
+  drawText('NO PARTS PENDING · 无遗留配件', VIEW_W/2, 120, '#8fe3b0', 12, true, true);
+  drawText('TIME  '+Math.max(0,Math.ceil(Game.timer)), VIEW_W/2, 156, '#ffd266', 0, false, true);
+  drawText('ANODE RODS  '+Game.anodes, VIEW_W/2, 174, '#dfe8f2', 0, false, true);
+  if(Math.floor(GamE_anim*2)%2===0) drawText('Press Enter / tap  ·  回到标题', VIEW_W/2, 232, '#8fa6d6', 12, true, true);
+}
+function renderLevel(){
+  const L=Game.level; if(!L) return;
+  drawParallax(L);
+  // tiles
+  const x0=Math.max(0,Math.floor(Camera.x/TILE)-1);
+  const y0=Math.max(0,Math.floor(Camera.y/TILE)-1);
+  const x1=Math.min(L.w, x0+SCREEN_TILES_W+3);
+  const y1=Math.min(L.h, y0+SCREEN_TILES_H+3);
+  for(let ty=y0;ty<y1;ty++)for(let tx=x0;tx<x1;tx++){
+    drawTile(L,tx,ty);
+  }
+  // entities/items (stage 3+ will draw here)
+  if(L.items) L.items.forEach(it=>drawItem(it));
+  if(L.enemies) L.enemies.forEach(en=>{ if(en.type==='mouse'&&en.chewTimer>0){} if(typeof en.draw==='function')en.draw(); else {} });
+  if(L.floats) L.floats.forEach(fl=>{ if(typeof fl.draw==='function')fl.draw(); });
+  if(L.projectiles) L.projectiles.forEach(pr=>{ if(typeof pr.draw==='function')pr.draw(); });
+  if(L.particles) L.particles.forEach(pa=>{ if(typeof pa.draw==='function')pa.draw(); });
+  if(L._rocks) L._rocks.forEach(rk=>{
+    if((rk.warn>>2)&1) return;
+    const xx=Math.round(rk.x-Camera.x);
+    ctx.fillStyle='#ff5a4a'; ctx.fillRect(xx+2,8,5,8);
+    drawText('!',xx+1,15,'#fff');
+  });
+  if(L.npcs) L.npcs.forEach(np=>{ if(typeof np.draw==='function')np.draw(); });
+  if(L.gadgets) L.gadgets.forEach(gd=>gd.draw());
+  if(L.dumpRoom) drawDumpRoom(L);
+  drawFlag(L);
+  if(L.boss && typeof L.boss.draw==='function') L.boss.draw();
+  if(Game.flash>0){ ctx.fillStyle='rgba(255,255,255,'+(Game.flash)+')'; ctx.fillRect(0,0,VIEW_W,VIEW_H); Game.flash=Math.max(0,Game.flash-0.06); }
+}
+function drawParallax(L){
+  const pal=L.palette;
+  // sky gradient
+  const g=ctx.createLinearGradient(0,0,0,VIEW_H);
+  g.addColorStop(0,pal.sky0); g.addColorStop(1,pal.sky1);
+  ctx.fillStyle=g; ctx.fillRect(0,0,VIEW_W,VIEW_H);
+  // far layer (karst peaks)
+  ctx.fillStyle=pal.far;
+  const off=(Camera.x*0.2)%256;
+  for(let i=-1;i<VIEW_W/64+2;i++){
+    const bx=i*64-off;
+    drawPeak(bx, 96, 150, 44+ (i%3)*10);
+  }
+  // mid layer
+  ctx.fillStyle=pal.mid;
+  const off2=(Camera.x*0.5)%200;
+  for(let i=-1;i<VIEW_W/80+2;i++){
+    const bx=i*80-off2;
+    drawHill(bx,150, 60);
+  }
+  // zone props (anchored, mid-parallax, culled)
+  drawZoneProps(L);
+  // water/ground strip
+  ctx.fillStyle=pal.ground||pal.mid;
+}
+// deterministic seeded pseudo-random in [0,1) from an integer
+function seeded(n){ const s=Math.sin(n*127.1+31.7)*43758.5453; return s-Math.floor(s); }
+function drawZoneProps(L){
+  if(!L.zone) return;
+  const f=0.5;                       // mid-parallax factor
+  const wpx=L.w*TILE;
+  const base=150;                    // prop baseline y (screen)
+  const step=120;
+  for(let wx=60; wx<wpx+VIEW_W; wx+=step){
+    const sx=wx*f - Camera.x*f;
+    if(sx<-70||sx>VIEW_W+70) continue;
+    const i=Math.round(wx/step), r=seeded(i+L.zone*57);
+    const py=base-Math.round(r*18);      // slight height variation
+    switch(L.zone){
+      case 2: drawRigProp(sx,py,r); break;
+      case 3: drawCamperProp(sx,py,r); break;
+      case 4: drawContainerProp(sx,py,r); break;
+      case 5: drawMarketProp(sx,py,r); break;
+      case 6: drawPassProp(sx,py,r); break;
+    }
+  }
+}
+function drawRigProp(sx,py,r){
+  // parked class-C rig: trailer + cab
+  ctx.fillStyle='#5a6a7a'; ctx.fillRect(sx,py-14,44,14);
+  ctx.fillStyle='#c9452f'; ctx.fillRect(sx+44,py-12,12,12);
+  ctx.fillStyle='#2a3a4a'; ctx.fillRect(sx+47,py-10,7,5);
+  ctx.fillStyle='#8a9aa8';
+  ctx.beginPath(); ctx.arc(sx+8,py,3,0,7); ctx.arc(sx+34,py,3,0,7); ctx.arc(sx+50,py,3,0,7); ctx.fill();
+  ctx.fillStyle='#dfeedd'; ctx.fillRect(sx+2,py-12,10,3);
+}
+function drawCamperProp(sx,py,r){
+  // EV camper with light-blue badge
+  ctx.fillStyle='#e8eef4'; ctx.fillRect(sx,py-16,40,16);
+  ctx.fillStyle='#9fc0dd'; ctx.fillRect(sx,py-16,40,4);
+  ctx.fillStyle='#2a4a6a'; ctx.fillRect(sx+4,py-10,10,7);
+  ctx.fillStyle='#39424e';
+  ctx.beginPath(); ctx.arc(sx+9,py,3,0,7); ctx.arc(sx+30,py,3,0,7); ctx.fill();
+  ctx.fillStyle='#7fe8a8'; ctx.fillRect(sx+30,py-13,6,6);   // EV badge
+  ctx.fillStyle='#1e5f3c'; ctx.fillRect(sx+32,py-11,2,2);
+}
+function drawContainerProp(sx,py,r){
+  // stacked import containers
+  const cs=['#c9452f','#2f6fb0','#3a8a5a','#e8a52b'];
+  for(let k=0;k<3;k++){
+    ctx.fillStyle=cs[(k+((r>0.5)?1:0))%4];
+    ctx.fillRect(sx+(k%2)*4,py-14-k*13,44,12);
+    ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(sx+(k%2)*4,py-14-k*13,44,2);
+  }
+  ctx.fillStyle='#111'; ctx.fillRect(sx+20,py-30,6,3);
+}
+function drawMarketProp(sx,py,r){
+  // night-market stall with awning + a lantern
+  ctx.fillStyle='#7a5a2a'; ctx.fillRect(sx+2,py-12,36,12);
+  ctx.fillStyle=r>0.5?'#c93a1e':'#2f6fb0';
+  for(let k=0;k<6;k++) ctx.fillRect(sx+k*7,py-16,5,4);
+  ctx.fillStyle='#ffd266'; ctx.fillRect(sx+14,py-8,12,6);
+  ctx.fillStyle='#c93a1e'; ctx.fillRect(sx+30,py-24,6,7);
+  ctx.fillStyle='#ffd266'; ctx.fillRect(sx+31,py-23,4,4);
+}
+function drawPassProp(sx,py,r){
+  // G318 switchback peak + prayer-flag string
+  ctx.fillStyle='#8a97a8';
+  ctx.beginPath();
+  ctx.moveTo(sx-24,py); ctx.lineTo(sx,py-34); ctx.lineTo(sx+24,py); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#e8eeF4'.toLowerCase(); ctx.beginPath();
+  ctx.moveTo(sx-7,py-22); ctx.lineTo(sx,py-34); ctx.lineTo(sx+7,py-22); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#5a6a7a';                          // switchback road
+  ctx.fillRect(sx-18,py-6,36,3);
+  const cols=['#c93a1e','#2f6fb0','#e8e2d2','#3a8a5a','#e8a52b'];
+  for(let k=0;k<5;k++){ ctx.fillStyle=cols[k]; ctx.fillRect(sx+16+k*7, py-18+(k%2?1:0), 5,4); }
+  ctx.strokeStyle='#39424e'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(sx+14,py-16); ctx.lineTo(sx+52,py-14); ctx.stroke();
+}
+function drawPeak(x,baseY,h,w){
+  ctx.beginPath();
+  ctx.moveTo(x-w, baseY+h);
+  ctx.lineTo(x, baseY);
+  ctx.lineTo(x+w, baseY+h);
+  ctx.closePath(); ctx.fill();
+}
+function drawHill(x,baseY,h){
+  ctx.beginPath();
+  ctx.ellipse(x, baseY+h, 55, h, 0, Math.PI, 0);
+  ctx.fill();
+}
+function drawTile(L,tx,ty){
+  const c=L.grid[ty][tx];
+  const x=tx*TILE-Camera.x, y=ty*TILE-Camera.y;
+  const pal=L.palette;
+  if(c===' '||c==='.') return;
+  if(c==='#'){
+    ctx.fillStyle=pal.block; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle=pal.blockTop; ctx.fillRect(x,y,TILE,3);
+    ctx.fillStyle=pal.blockShade; ctx.fillRect(x,y+TILE-2,TILE,2);
+  } else if(c==='B'){
+    ctx.fillStyle=pal.wood; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle=pal.woodShade; ctx.fillRect(x,y+4,TILE,1); ctx.fillRect(x,y+9,TILE,1);
+    ctx.fillStyle=pal.woodEdge; ctx.fillRect(x,y,TILE,1);
+  } else if(c==='?'){
+    ctx.fillStyle='#e8a52b'; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle='#ffd266'; ctx.fillRect(x+1,y+1,TILE-2,TILE-2);
+    ctx.fillStyle='#7a4b00';
+    drawText('?',x+5,y+11,'#7a4b00');
+  } else if(c==='^'||c==='='){
+    ctx.fillStyle= pal.awning||'#dfeaf5'; ctx.fillRect(x,y,TILE,4);
+    ctx.fillStyle='rgba(0,0,0,.25)'; ctx.fillRect(x,y+4,TILE,1);
+  } else if(c==='A'){
+    ctx.fillStyle='#c98a3c'; ctx.fillRect(x,y+6,TILE,3);
+    ctx.fillStyle='#8a5a20'; ctx.fillRect(x+2,y+8,3,6); ctx.fillRect(x+TILE-5,y+8,3,6);
+    ctx.fillStyle='#ffd27a'; ctx.fillRect(x,y+5,TILE,2);
+  } else if(c==='R'){
+    ctx.fillStyle=pal.blockTop; ctx.beginPath();
+    ctx.moveTo(x,y+TILE); ctx.lineTo(x+TILE,y); ctx.lineTo(x+TILE,y+TILE); ctx.closePath(); ctx.fill();
+  } else if(c==='~'){
+    ctx.fillStyle='rgba(80,160,220,.7)'; ctx.fillRect(x,y+3,TILE,TILE-3);
+    ctx.fillStyle='rgba(255,255,255,.35)'; ctx.fillRect(x,y+3,TILE,1);
+  } else if(c==='W'){
+    ctx.fillStyle='#6a4a2a'; ctx.fillRect(x,y+3,TILE,10);
+    ctx.fillStyle='#3a2a1a'; ctx.fillRect(x,y+6,TILE,1); ctx.fillRect(x,y+11,TILE,1);
+    ctx.fillStyle='#d84a2a'; ctx.fillRect(x,y+4,5,2);
+    ctx.fillStyle='#f2c94c'; ctx.fillRect(x+TILE-5,y+4,5,2);
+  } else if(c==='H'){
+    const on=((Math.floor(GamE_anim*8)+tx*3+ty*5)%6)<4;
+    ctx.fillStyle='#23232c'; ctx.fillRect(x,y+6,TILE,1); ctx.fillRect(x,y+9,TILE,1);
+    ctx.fillStyle=on?'#ff8a1e':'#7a3a0a'; ctx.fillRect(x,y+7,TILE,2);
+    if(on&&((tx*7+ty*13)%3===0)){ ctx.fillStyle='#ffd266'; ctx.fillRect(x+((tx*5+ty*3)%12),y+6,2,3); }
+  } else if(c==='o'){
+    ctx.fillStyle='#3a4a5a'; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle='#7fb2d8'; ctx.fillRect(x+2,y+2,12,12);
+    ctx.fillStyle='#bfe0f0'; ctx.fillRect(x+3,y+3,10,3);
+    ctx.fillStyle='#3a4a5a'; ctx.fillRect(x+7,y+2,2,12);
+  } else if(c==='V'){
+    ctx.fillStyle='#5a6a70'; ctx.fillRect(x+1,y+2,14,12);
+    ctx.fillStyle='#1a2226'; ctx.fillRect(x+4,y+7,8,5);
+    if((Math.floor(GamE_anim*3)+tx*7)%10<2){ ctx.fillStyle='#8bd'; ctx.fillRect(x+7,y+12,2,2); }
+  } else if(c==='v'){
+    ctx.fillStyle='#5a6a70'; ctx.fillRect(x+1,y+2,14,12);
+    ctx.fillStyle='#8a9aa0'; ctx.fillRect(x+3,y+5,10,1); ctx.fillRect(x+3,y+9,10,1);
+  } else if(c==='h'){
+    ctx.fillStyle='#b84a2a'; ctx.fillRect(x+2,y+2,12,12);
+    ctx.fillStyle='#e8e0c8'; ctx.fillRect(x+2,y+2,12,3);
+    ctx.fillStyle='#3a1a12'; ctx.fillRect(x+5,y+9,3,4);
+    if((Math.floor(GamE_anim*4)+tx)%5<2){ ctx.fillStyle='#fff'; ctx.fillRect(x+10,y+6,2,2); }
+  } else if(c==='Q'){
+    ctx.fillStyle='#bfe8f5'; ctx.fillRect(x,y,TILE,5);
+    ctx.fillStyle='#8fc8e8'; ctx.fillRect(x,y+5,TILE,2);
+    ctx.fillStyle='#e8f8ff'; ctx.fillRect(x+2,y+1,3,1); ctx.fillRect(x+10,y+2,2,1);
+  } else if(c==='S'){
+    // rooftop solar array: one-way sliding panel
+    ctx.fillStyle='#2a3a5a'; ctx.fillRect(x,y+2,TILE,4);
+    ctx.fillStyle='#3f5f9a'; ctx.fillRect(x+1,y+3,TILE-2,2);
+    ctx.fillStyle='#8fb2ff'; ctx.fillRect(x+((tx*5)%10),y+3,2,2);
+    ctx.fillStyle='#dfe8ff'; ctx.fillRect(x,y,TILE,1);
+  } else if(c==='G'){
+    // EV fast-charge pad
+    const on=((Math.floor(GamE_anim*3)+tx)%6)<3;
+    ctx.fillStyle=pal.block; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle=on?'#7fe8a8':'#3a8a5a'; ctx.fillRect(x+3,y+4,TILE-6,3);
+    ctx.fillStyle='#eafff2'; ctx.fillRect(x+5,y+9,6,4);
+    ctx.fillStyle='#2a5a3c'; ctx.fillRect(x+7,y+10,2,2);
+  } else if(c==='C'){
+    // charging-cable vine
+    ctx.strokeStyle='#2a2a34'; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(x+8,y); ctx.quadraticCurveTo(x+12,y+8,x+6,y+16);
+    ctx.stroke();
+    ctx.fillStyle='#c93a1e'; ctx.fillRect(x+4,y+13,4,3);
+  } else if(c==='U'){
+    // hotpot steam updraft
+    const k=(Math.floor(GamE_anim*4)+tx)%5;
+    ctx.fillStyle='rgba(232,244,255,.35)';
+    ctx.fillRect(x+3,y+12-k,4,4); ctx.fillRect(x+9,y+6-k,4,4);
+    ctx.fillStyle='rgba(255,255,255,.5)'; ctx.fillRect(x+5,y+1-k,2,2);
+    ctx.fillStyle='#e8eaff'; ctx.fillRect(x,y+15,TILE,1);
+  } else if(c==='L'){
+    // lantern rope
+    ctx.fillStyle='#5a4a3a'; ctx.fillRect(x,y,TILE,1);
+    if(tx%2===0){
+      ctx.fillStyle='#c93a1e'; ctx.fillRect(x+5,y+1,6,8);
+      ctx.fillStyle='#ffd266'; ctx.fillRect(x+6,y+2,4,5);
+      ctx.fillStyle='#8a2a18'; ctx.fillRect(x+7,y+8,2,2);
+    }
+  } else if(c==='q'){
+    // QR toll-gate door
+    ctx.fillStyle='#233044'; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle='#2f4058'; ctx.fillRect(x+2,y+2,TILE-4,TILE-4);
+    ctx.fillStyle='#7ff0e8';
+    ctx.fillRect(x+4,y+4,3,3); ctx.fillRect(x+9,y+5,3,2); ctx.fillRect(x+4,y+9,2,3); ctx.fillRect(x+9,y+10,2,2);
+  } else if(c==='K'){
+    // sea-freight parts crate
+    ctx.fillStyle='#a07840'; ctx.fillRect(x,y,TILE,TILE);
+    ctx.fillStyle='#7a5a30'; ctx.fillRect(x,y+TILE-2,TILE,2); ctx.fillRect(x,y,TILE,1);
+    ctx.strokeStyle='#5a4020'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(x+2,y+2); ctx.lineTo(x+14,y+14); ctx.moveTo(x+14,y+2); ctx.lineTo(x+2,y+14); ctx.stroke();
+    ctx.fillStyle='#e8d5a8'; ctx.fillRect(x+4,y+6,8,4);
+    drawText('件', x+6, y+10, '#5a4020', 8, true);
+  }
+}
+function drawDumpRoom(L){
+  const d=L.dumpRoom; if(!d) return;
+  const x=Math.round(d.x-Camera.x), y=Math.round(d.y-Camera.y);
+  if(x<-40||x>VIEW_W+40) return;
+  // pipe run
+  ctx.fillStyle='#5a6a70'; ctx.fillRect(x-10,y+8,96,5);
+  ctx.fillStyle='#42505a'; ctx.fillRect(x-10,y+8,96,2);
+  const valve=(vx,c1,c2,label,on)=>{
+    ctx.fillStyle=c1; ctx.beginPath(); ctx.arc(vx+5,y+10,7,0,7); ctx.fill();
+    ctx.fillStyle=c2;
+    ctx.fillRect(vx+4,y+3,2,7); ctx.fillRect(vx-1,y+6,12,2);
+    drawText(label, vx-6, y-6, '#e8f4ff', 8, true);
+    if(on) drawText('✓', vx, y+24, '#8fe3b0');
+  };
+  valve(x, '#23232c', d.black?'#8fe3b0':'#556', '黑水', d.black);
+  valve(x+56, '#5c6a72', d.solved?'#8fe3b0':'#9ab', '灰水', d.solved);
+  // nozzle + flow state
+  ctx.fillStyle='#3a4650'; ctx.fillRect(x+80,y+6,8,10);
+  if(d.solved){
+    const f=Math.floor(d.t/3)%4;
+    ctx.fillStyle='#9fd8c8'; ctx.fillRect(x+86,y+8+f,3,6);
+    if(d.t%6===0) spawnParticlesL(L, x+88, y+12, '#9fd8c8');
+  }
+  if(d.flood>0){
+    ctx.fillStyle='rgba(150,170,160,.5)';
+    for(let i=0;i<10;i++){ const fx=(i*13+d.t*2)%96; ctx.fillRect(x-8+fx, y+14+((i*7)%6), 3,3); }
+  }
+  if(!d.solved&&!d.failed&&Game.player&&!Game.player.dead){
+    const p=Game.player;
+    if(Math.abs((p.x+p.w/2)-(d.x+5))<20||Math.abs((p.x+p.w/2)-(d.x+61))<20)
+      drawText('X 拉杆 PULL', x+20, y-18, '#ffd266');
+  }
+}
+function spawnParticlesL(L,x,y,c){ if(!L.particles) return; L.particles.push({x,y,vx:Math.random()*2-0.6,vy:-0.5,t:0,life:0.4,color:c,draw:fn_pdrawing}); }
+function drawFlag(L){
+  if(!L.flag) return;
+  const x=Math.round(L.flag.x*TILE-Camera.x), y=Math.round(L.flag.y*TILE-Camera.y);
+  const f=L.cleared?'#33d17a':'#e74c3c';
+  ctx.fillStyle='#cfd6e0'; ctx.fillRect(x,y,3,56);      // pole
+  ctx.fillStyle=f;
+  const wv=Math.sin(GamE_anim*8)*2;
+  ctx.beginPath();
+  ctx.moveTo(x+3,y); ctx.lineTo(x+20+wv,y+8); ctx.lineTo(x+3,y+16); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#334'; ctx.fillRect(x-2,y+54,10,4);
+  if(L.cleared) drawText('完工', x+4, y+34, '#33d17a', 8, true);
+}
+function drawItem(it){
+  const x=Math.round(it.x-Camera.x), y=Math.round(it.y-Camera.y);
+  switch(it.type){
+    case 'anode':
+      it.t=(it.t||0)+0.15;
+      const s=Math.abs(Math.cos(it.t))*4+2;
+      ctx.fillStyle='#9fb2c4'; ctx.fillRect(x,y+3, s,9);
+      ctx.fillStyle='#dfe8f2'; ctx.fillRect(x,y+3, s,1);
+      break;
+    case 'sealant':
+      ctx.fillStyle='#fff'; ctx.fillRect(x,y,12,7); ctx.fillStyle='#c33'; ctx.fillRect(x,y,12,2);
+      ctx.fillStyle='#888'; ctx.fillRect(x+12,y+2,3,3); break;
+    case 'torque':
+      ctx.fillStyle='#666'; ctx.fillRect(x,y+4,12,3); ctx.fillStyle='#f2c94c'; ctx.fillRect(x,y+2,5,7); break;
+    case 'cee':
+      ctx.fillStyle='#1e5fff'; ctx.fillRect(x,y,11,11); ctx.fillStyle='#bcd';
+      ctx.fillRect(x+3,y+3,2,2); ctx.fillRect(x+7,y+3,2,2); break;
+    case 'surge':
+      ctx.fillStyle='#33d17a'; ctx.fillRect(x,y,11,11); ctx.fillStyle='#fff'; drawText('EMS',x+1,y+8,'#fff');break;
+    case 'shield':
+      ctx.fillStyle='#fff'; ctx.fillRect(x,y,11,11); ctx.strokeStyle='#222'; ctx.strokeRect(x+1,y+1,9,9); break;
+    case 'mooncake':
+      ctx.fillStyle='#e9c26a'; ctx.beginPath(); ctx.arc(x+5,y+5,5,0,7); ctx.fill();
+      ctx.fillStyle='#c79a3f'; ctx.beginPath(); ctx.arc(x+5,y+5,3,0,7); ctx.fill(); break;
+    case 'order':
+      ctx.fillStyle='#fff'; ctx.fillRect(x,y,9,11); ctx.fillStyle='#333'; ctx.fillRect(x+2,y+2,5,1); ctx.fillRect(x+2,y+4,5,1);
+      drawText('单',x+1,y+10,'#c0392b',8,true); break;
+    case 'oneup':
+      drawText('验收合格',x-4,y+8,'#e74c3c',8,true); break;
+    case 'impact':
+      ctx.fillStyle='#222'; ctx.fillRect(x,y+4,12,4); ctx.fillStyle='#0ff'; ctx.fillRect(x+10,y+3,3,6); break;
+    case 'tea':
+      ctx.fillStyle='#8a4b2a'; ctx.fillRect(x+2,y,8,11); ctx.fillStyle='#cfe'; ctx.fillRect(x+2,y,8,2); break;
+    case 'grease':
+      ctx.fillStyle='#c8c255'; ctx.fillRect(x,y+3,12,8); ctx.fillStyle='#333'; ctx.fillRect(x,y+3,12,2); break;
+    case 'part':
+      // imported spare part: bolt in a blue box
+      it.t=(it.t||0)+0.1;
+      const bob=Math.sin(it.t)*2;
+      ctx.fillStyle='#2f4a6a'; ctx.fillRect(x,y+6+bob,12,7);
+      ctx.fillStyle='#8fb2ff'; ctx.fillRect(x+2,y+4+bob,8,4);
+      ctx.fillStyle='#dfe8f2'; ctx.beginPath(); ctx.arc(x+6,y+9+bob,3,0,7); ctx.fill();
+      ctx.fillStyle='#39424e'; ctx.fillRect(x+5,y+8+bob,2,2); break;
+  }
+}
+
+// ===== SECTION: SCREENS / HUD (staged) =================
+function renderHUD(){
+  // lives (wrench icons)
+  for(let i=0;i<Math.max(0,Game.lives);i++){
+    ctx.fillStyle='#cfd6e0'; ctx.fillRect(6+i*12,6,9,3); ctx.fillStyle='#555'; ctx.fillRect(2+i*12,9,4,9);
+  }
+  drawText('×'+Math.max(0,Game.lives), 6+Math.max(0,Game.lives)*12+2, 14, '#fff');
+  // anodes
+  ctx.fillStyle='#9fb2c4'; ctx.fillRect(120,6,7,9);
+  drawText('×'+Game.anodes, 130, 14, '#dfe8f2');
+  // power badge
+  const badge = Game.power===2?'220V • 32A': Game.power===1?'220V • 16A':'APPRENTICE';
+  ctx.fillStyle= Game.power===2? '#1e5fff': Game.power===1? '#2f6fb0':'#444';
+  ctx.fillRect(190,5,72,12);
+  drawText(badge,192,13, Game.power>0?'#fff':'#aab');
+  // arc meter (visibly doubles in capacity/width at 32A)
+  const mw = Game.power===2? 72:36;
+  ctx.fillStyle='#111'; ctx.fillRect(190,19,mw,3);
+  ctx.fillStyle= Game.power===2? '#6cf':'#48a';
+  ctx.fillRect(190,19,mw*(Game.arcMeter/Game.arcMax),3);
+  drawText('ARC',190,27,'#567',0);
+  // zone label
+  const zl = Game.zoneLevels[Game.levelIndex]||[];
+  drawText(zl.label||('--'), VIEW_W-40, 14, '#fff');
+  // timer
+  drawText(String(Math.max(0,Math.ceil(Game.timer))).padStart(3,'0'), VIEW_W-40, 24, '#ffd266');
+  if(AudioEngine.muted) drawText('MUTED·M', VIEW_W-46, 34, '#ff8a8a');   // master mute indicator
+  // tank multiplier (3 lights)
+  drawTankMonitor(8, 30);
+}
+function drawTankMonitor(x,y){
+  // 清水/灰水/黑水 tank monitor: the score-multiplier panel, styled after the
+  // notoriously unreliable real sensors. It occasionally misreads (glitches to
+  // "all full") — cosmetic only, never changes actual gameplay data.
+  const glitch = ((Game.timer*7)|0)%97===0;
+  const on = glitch? [true,true,true] : [Game.multiplier>=1, Game.multiplier>=2, Game.multiplier>=3];
+  const cols=['#39c','#886','#444'];
+  on.forEach((lit,i)=>{
+    ctx.fillStyle= lit? cols[i] : '#223';
+    ctx.fillRect(x+i*12,y,9,6);
+  });
+  drawText('×'+Game.multiplier, x+38, y+6, '#ffd266');
+  drawText('FRESH·GRAY·BLACK', x, y+12, glitch? '#fd8': '#567', 0);
+}
+function renderTitle(){
+  const pal={sky0:'#2a2f55',sky1:'#e8895a',far:'#3a2f55',mid:'#241f3a'};
+  const g=ctx.createLinearGradient(0,0,0,VIEW_H);
+  g.addColorStop(0,pal.sky0); g.addColorStop(1,pal.sky1); ctx.fillStyle=g; ctx.fillRect(0,0,VIEW_W,VIEW_H);
+  const t=performance.now()/1000;
+  ctx.fillStyle='#241f3a';
+  for(let i=0;i<10;i++){ const bx=(i*70 - (t*8%70)); drawPeak(bx,120,150,50+(i%3)*14); }
+  ctx.fillStyle='#151327';
+  for(let i=0;i<12;i++){ const bx=(i*55 - (t*16%55)); drawHill(bx,190,44); }
+  // lanterns
+  for(let i=0;i<8;i++){ const lx=40+i*62; ctx.fillStyle='#ff7a2a'; ctx.fillRect(lx,70,6,10); ctx.fillStyle='#331'; ctx.fillRect(lx,66,6,2);}
+  // title
+  drawBigText('房车 RUNNER', VIEW_W/2, 110);
+  drawText('G318 RV CAMPGROUND PLATFORMER', VIEW_W/2, 138, '#ffd9a8', 0, false, true);
+  if(Math.floor(t*2)%2===0) drawText('PRESS START (Enter)', VIEW_W/2, 200, '#fff', 0, false, true);
+  drawText('←→/AD move   Z/Space jump   X/J wrench   ↓ crouch   Shift run', VIEW_W/2, 236, '#bcd3ff', 0, false, true);
+  drawText('M mute   Enter pause', VIEW_W/2, 250, '#8fa6d6', 0, false, true);
+}
+function drawBigText(txt,x,y){
+  ctx.font='bold 32px monospace'; ctx.textAlign='center';
+  for(const o of [[4,4],[3,3],[2,2]]){ ctx.fillStyle='rgba(18,20,38,.92)'; ctx.fillText(txt,x+o[0],y+o[1]); }
+  ctx.fillStyle='#20203a'; ctx.fillText(txt,x+1,y+1);
+  ctx.fillStyle='rgba(255,150,70,.30)'; ctx.fillText(txt,x-1,y-2);
+  ctx.fillStyle='#fff2d8'; ctx.fillText(txt,x,y);
+  ctx.textAlign='left';
+}
+const ZONE_META={1:{c:'#33d17a'},2:{c:'#3aa0ff'},3:{c:'#ff9a2a'},4:{c:'#c77dff'},5:{c:'#ff5a7a'},6:{c:'#9fd0ff'},7:{c:'#ffd266'}};
+const TECH_TIPS=[
+ 'Anode rods sacrificially corrode inside the water-heater tank. Replace one that is mostly gone or the tank itself rusts out.',
+ 'Re-seal roof penetrations, seams and A/C shrouds every 2-3 years; UV and daily heat cycling harden and crack old sealant.',
+ 'Dump the BLACK tank first, then GRAY, so hot soapy gray water flushes the hose and knocks down odor.',
+ 'Check tire pressure COLD, before a drive; hot tires read high and hide underinflation, and age plus low pressure is what blows tires out.',
+ 'A 32A pedestal charges house batteries at roughly double the current of 16A - the real reason campers fight for 32A sites.',
+ 'Repack wheel bearings about yearly or every 10k-15k miles; dried-out grease lets the bearing overheat and fail.',
+ 'To winterize, push pink antifreeze through the fresh/gray/black tanks and the heater, then drain every line below the snow-line.',
+ 'Above ~10,000 ft the thinner air leans the burner mixture, so combustion heaters sputter and lose heat output at altitude.',
+ 'Orange wiring means high voltage on an EV: never cut or tap it without lockout/tagout, or the arc-flash can be fatal.',
+ '100 anode rods = 1 spare life, by campground house rule.',
+ 'Level the rig with a bubble level before hooking up; a listed van parked on a slope twists the chassis.',
+ 'Plant stabilizer jacks on firm, level ground only; a jack sunk into soft soil cracks the wheel well.'
+];
+function renderMap(){
+  const t=performance.now()/1000;
+  const cx=250, cy=184, rx=198, ry=58;
+  ctx.fillStyle='#0d1524'; ctx.fillRect(0,0,VIEW_W,VIEW_H);
+  const g=ctx.createLinearGradient(0,0,0,116);
+  g.addColorStop(0,'#241f3f'); g.addColorStop(1,'rgba(13,21,36,0)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,VIEW_W,116);
+  // G318 mountain cluster top-right
+  ctx.fillStyle='#20293d';
+  for(let i=0;i<6;i++) drawPeak(356+i*24, 40, 20+i*7, 15+i*4);
+  drawText('G318 高路 G318', 416, 60, '#9fc4e8', 0, true, true);
+  // campground loop road
+  ctx.strokeStyle='#2b3448'; ctx.lineWidth=16; ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.beginPath();
+  for(let i=0;i<=72;i++){const a=i/72*2*Math.PI;const nx=cx+rx*Math.cos(a),ny=cy+ry*Math.sin(a); i?ctx.lineTo(nx,ny):ctx.moveTo(nx,ny);}
+  ctx.closePath(); ctx.stroke();
+  // center camp
+  drawText('营地', cx, cy-3, '#6a7a9a', 11, true, true);
+  drawText('CAMP LOOP', cx, cy+14, '#465170', 0, false, true);
+  // G318 spur from the pass site to the peaks
+  let gi=0; for(let i=0;i<LEVELS.length;i++) if(LEVELS[i].zone===6) gi=i;
+  const ga=gi/LEVELS.length*2*Math.PI;
+  const sx=cx+rx*Math.cos(ga), sy=cy+ry*Math.sin(ga);
+  ctx.save(); ctx.setLineDash([3,4]); ctx.strokeStyle='#79a6d8'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(sx,sy); ctx.quadraticCurveTo(400,86,404,54); ctx.stroke(); ctx.restore();
+  // sites
+  for(let i=0;i<LEVELS.length;i++){
+    const a=i/LEVELS.length*2*Math.PI;
+    const nx=cx+rx*Math.cos(a), ny=cy+ry*Math.sin(a);
+    const d=LEVELS[i], c=(ZONE_META[d.zone]||{}).c||'#888';
+    const cur=(i===Game.levelIndex), done=i<Game.levelIndex;
+    const r=cur?13:9;
+    ctx.fillStyle= done? '#12331f' : (cur? '#1b2a45' : '#151d2b');
+    ctx.beginPath(); ctx.arc(nx,ny,r,0,7); ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle= cur? '#ffffff' : (done? c : '#3a4458');
+    ctx.beginPath(); ctx.arc(nx,ny,r,0,7); ctx.stroke();
+    if(cur){ const pr=13+(t*12%6); ctx.save(); ctx.globalAlpha=0.55; ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(nx,ny,pr,0,7); ctx.stroke(); ctx.restore(); }
+    drawText(String(i+1), nx, ny+(cur?4:3), '#fff', 0, false, true);
+    drawText(d.label, nx, ny+(cur?23:19), cur? '#ffffff' : (done? c : '#5a6a88'), 0, false, true);
+    if(done){ ctx.strokeStyle='#33d17a'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(nx+r+2,ny); ctx.lineTo(nx+r+5,ny+3); ctx.lineTo(nx+r+10,ny-5); ctx.stroke(); }
+    if(cur){
+      const vy=ny-r-9;
+      ctx.fillStyle='#f4f2ea'; ctx.fillRect(nx-6, vy, 12, 6);
+      ctx.fillStyle='#c9c3b4'; ctx.fillRect(nx-4, vy-2, 8, 2);
+      ctx.fillStyle='#222'; ctx.beginPath(); ctx.arc(nx-3,vy+7,2,0,7); ctx.arc(nx+3,vy+7,2,0,7); ctx.fill();
+    }
+  }
+  drawText('营地环道 CAMP LOOP', VIEW_W/2, 22, '#cfe0ff', 11, true, true);
+  const cd=LEVELS[Game.levelIndex]||LEVELS[0];
+  drawText('NOW · '+cd.id+'  '+cd.name, VIEW_W/2, 268, (ZONE_META[cd.zone]||{}).c||'#fff', 0, true, true);
+  drawText('RODS '+Game.anodes+'   ·   维修单 '+Game.servicesFound.length, VIEW_W/2, 254, '#8fe3b0', 0, false, true);
+  if(Game._mapNext!=null && Game._mapT>0.8 && Math.floor(t*2)%2===0) drawText('ENTER', VIEW_W/2, 240, '#ffd266', 0, false, true);
+}
+function renderPause(){
+  const t=performance.now()/1000;
+  ctx.fillStyle='rgba(6,9,16,.80)'; ctx.fillRect(0,0,VIEW_W,VIEW_H);
+  ctx.fillStyle='rgba(18,26,44,.96)'; ctx.fillRect(58,52,396,184);
+  ctx.strokeStyle='#33507f'; ctx.lineWidth=2; ctx.strokeRect(58,52,396,184);
+  ctx.strokeStyle='#33d17a'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(58,84); ctx.lineTo(454,84); ctx.stroke();
+  drawBigText('暂停 PAUSED', VIEW_W/2, 74);
+  drawText('TECH TIPS · 师傅小贴士', VIEW_W/2, 104, '#ffd266', 0, true, true);
+  const idx=Math.floor(t/4)%TECH_TIPS.length;
+  drawWrapped(TECH_TIPS[idx], VIEW_W/2, 126, 15, '#cfe0ff');
+  drawText('第 '+(idx+1)+' / '+TECH_TIPS.length+' 条', 430, 214, '#8fa6d6', 0, true, true);
+  drawText('Enter 继续 Resume   ·   M 静音', VIEW_W/2, 228, '#8fa6d6', 0, false, true);
+}
+function drawWrapped(txt, cx, y, lh, color){
+  const words=String(txt).split(' ');
+  let line=''; const lines=[];
+  for(const w of words){
+    if(line && (line+' '+w).length>52){ lines.push(line); line=w; }
+    else line= line? line+' '+w : w;
+  }
+  if(line) lines.push(line);
+  for(let i=0;i<lines.length && i<4;i++) drawText(lines[i], cx, y+i*lh, color, 0, false, true);
+}
+function drawDeadPlayer(p){
+  const x=Math.round(p.x-Camera.x), y=Math.round(p.y-Camera.y);
+  const dt=Math.min(p.deathT,1.25);
+  ctx.save();
+  ctx.globalAlpha=Math.max(0,1-(dt-0.55)/0.55);
+  ctx.translate(x+p.w/2, y+p.h/2); ctx.rotate(dt*4);
+  ctx.fillStyle='#2f6fb0'; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);
+  ctx.fillStyle='#f0d9b8'; ctx.fillRect(-3,-p.h/2+1,7,3);
+  ctx.fillStyle='#111'; ctx.fillRect(1,-p.h/2+2,2,2);
+  ctx.restore();
+  const drop=Math.max(0,dt-0.35)*48;
+  const hx=x-1+Math.sin(dt*12)*2;
+  const hy=y-6+Math.min(8,dt*22)+drop;
+  ctx.globalAlpha=Math.max(0,1-(dt-0.7)/0.55);
+  ctx.fillStyle='#f2c94c'; ctx.fillRect(hx,hy,p.w+2,3);
+  ctx.fillStyle= Game.power===2? '#1e5fff':'#e0a800'; ctx.fillRect(hx+1,hy-1,p.w,2);
+  ctx.globalAlpha=1;
+}
+function renderGameOver(){
+  ctx.fillStyle='#1a1220'; ctx.fillRect(0,0,VIEW_W,VIEW_H);
+  drawBigText('GAME OVER',VIEW_W/2,80);
+  drawText('维修发票 REPAIR INVOICE',VIEW_W/2,120,'#ffd266',0,false,true);
+  drawText('LABOR: 3 LIVES @ 1 EA',VIEW_W/2,150,'#cfe');
+  drawText('PARTS: PRIDE … $1.00',VIEW_W/2,164,'#cfe');
+  drawText('TOTAL DUE: ONE MORE TRY?',VIEW_W/2,184,'#fff',0,false,true);
+  if(Math.floor(performance.now()/500)%2===0) drawText('Press Enter to retry',VIEW_W/2,220,'#8fa6d6',0,false,true);
+}
+
+// ===== SECTION: GAME STATE & MAIN LOOP =================
+let last=0, acc=0;
+const STEP=1/60;
+function frame(ts){
+  requestAnimationFrame(frame);
+  if(!last) last=ts;
+  let dt=(ts-last)/1000; last=ts;
+  if(dt>0.25) dt=0.25;
+  acc+=dt;
+  while(acc>=STEP){ update(STEP); acc-=STEP; GamE_anim+=STEP; }
+  render();
+}
+function update(dt){
+  if(Game.state==='play'){
+    if(Game._introT>0) Game._introT--;
+    Game.timer-=dt;
+    if(Game.timer<=0 && !Game.player.dead){ killPlayer(Game.player,'time'); }
+    Input.update();
+    updatePlayer(Game.player,Game.level,dt);
+    updateEntities(dt);
+    Camera.update(Game.player.x,Game.player.y,Game.player.w,Game.player.h,Game.level.widthPx,Game.level.heightPx);
+    if(Game.level.auto){
+      // Zone 6 high pass: the convoy rolls on a slow idle, and surges hard
+      // during the whiteout gust fronts (same 260-frame weather cycle)
+      const _p=Game.player;
+      Game.level._autoT=(Game.level._autoT||0)+dt*60;
+      const _cyc=(Game.level._wT||0)%260;
+      const _push=(_cyc>=150&&_cyc<200)?1.6:0.45;
+      Game.level._autoX=Math.max(Game.level._autoX||0, Camera.x)+_push;
+      if(Camera.x<Game.level._autoX) Camera.x=Game.level._autoX;
+      if(_p&&!_p.dead && _p.x < Camera.x-16) killPlayer(_p,'shoved');
+    }
+    if(Game.shake>0)Game.shake--;
+    const L=Game.level;
+    if(L.flag && !L.cleared && rectHit(Game.player, L.flag.x*TILE, L.flag.y*TILE, 16, 60)) onLevelClear();
+  } else if(Game.state==='title'){
+    if(keysPressedEnter() || (Input.isTouch && Input.jump)) startFromTitle();
+  } else if(Game.state==='clear'){
+    Game._clearT=(Game._clearT||0)+dt;
+    if(Game._clearT>2.3 || (keysPressedEnter() && Game._clearT>0.6) || (Input.isTouch && Input.jump && Game._clearT>0.3)) advanceLevel();
+  } else if(Game.state==='map'){
+    Game._mapT=(Game._mapT||0)+dt;
+    if(Game._mapT>1.8 || keysPressedEnter() || (Input.isTouch && Input.jump && Game._mapT>0.15)){
+      Game._mapT=0;
+      const n=Game._mapNext; Game._mapNext=null;
+      if(n!=null) loadLevel(n);
+      Game.state='play';
+    }
+  } else if(Game.state==='done'){
+    if(keysPressedEnter() || (Input.isTouch && Input.jump)){ Game.state='title'; }
+  } else if(Game.state==='over'){
+    if(keysPressedEnter() || (Input.isTouch && Input.jump)){ Game.state='title'; }
+  }
+}
+function advanceLevel(){
+  Game._clearT=0;
+  const next=Game.levelIndex+1;
+  if(next<LEVELS.length){ Game._mapNext=next; Game.state='map'; Game._mapT=0; }
+  else { Game.state='title'; AudioEngine.stopMusic(); }
+}
+function keysPressedEnter(){
+  const k=Input.keys['pause'];
+  const r=!!k && !Game._enterHeld;
+  Game._enterHeld=!!k;
+  return r;
+}
+function rectHit(p,rx,ry,rw,rh){
+  return p.x < rx+rw && p.x+p.w > rx && p.y < ry+rh && p.y+p.h > ry;
+}
+function updateEntities(dt){
+  const L=Game.level; if(!L) return;
+  if(L.items) itemsUpdate(L,dt);
+  if(L.enemies) enemiesUpdate(L,dt);
+  if(L.floats) floatsUpdate(L,dt);
+  if(L.projectiles) projectilesUpdate(L,dt);
+  if(L.particles) particlesUpdate(L,dt);
+  if(L.npcs) npcsUpdate(L,dt);
+  if(L.gadgets) gadgetUpdate(L,dt);
+  qrScanUpdate(L);
+  if(L.auto) weatherUpdate(L,dt);
+  if(L.dumpRoom) dumpUpdate(L,dt);
+  if(L.boss && typeof L.boss.update==='function') L.boss.update(dt);
+}
+// pedestal checkpoints: walk up to plug in (saves progress), 32A posts refill
+// the arc meter faster at tier 3 — mirroring the real 16A/32A service gap
+// Dump Point bonus room: valve-order puzzle. The real rule — open the BLACK
+// (黑水) valve first, then GRAY (灰水), so gray water rinses out the hose.
+// Wrong order floods the room with gray water and forfeits the payout.
+function dumpUpdate(L,dt){
+  const d=L.dumpRoom; if(!d) return;
+  d.t++;
+  if(d.flood>0) d.flood--;
+  if(d.solved||d.failed) return;
+  const p=Game.player;
+  if(!p||p.dead) return;
+  const pull=(lx,which)=>{
+    const dx=(p.x+p.w/2)-lx, dy=(p.y+p.h/2)-(d.y+9);
+    if(Math.abs(dx)<16 && Math.abs(dy)<30 && Input.wrenchJustPressed){
+      if(which==='black' && !d.black){
+        d.black=true;
+        AudioEngine.sfx('valve');
+        spawnFloatFx('黑水 BLACK ✓', lx-12, d.y-26, '#dfe8f2');
+      } else if(which==='gray'){
+        if(d.black){
+          d.solved=true;
+          AudioEngine.sfx('reward');
+          spawnFloatFx('冲洗 RINSED +30', lx-20, d.y-30, '#8fe3b0');
+          for(let i=0;i<30;i++){
+            const it=makeItem('anode', lx-30+((i*7)%60), d.y-38-((i*13)%40));
+            it.vy=-2-((i*5)%30)/10; L.items.push(it);
+          }
+        } else {
+          d.failed=true; d.flood=240;
+          AudioEngine.sfx('flood');
+          spawnFloatFx('BLACK FIRST! 黑水先开', lx-24, d.y-30, '#ff9a8a');
+        }
+      }
+    }
+  };
+  pull(d.x+5,'black');
+  pull(d.x+61,'gray');
+}
+function npcsUpdate(L,dt){
+  const p=Game.player; if(!p||p.dead) return;
+  for(const np of L.npcs){
+    if(np.pulse>0) np.pulse--;
+    if(np.type==='pedestal'){
+      const dx=(p.x+p.w/2)-(np.x+7), dy=(p.y+p.h)-(np.y+2);
+      if(Math.abs(dx)<16 && dy>-20 && dy<26){
+        if(!np.used){
+          np.used=true; np.pulse=90;
+          p.checkpoint={x:Math.round(np.x/TILE), y:Math.round(np.y/TILE)-1};
+          AudioEngine.sfx('checkpoint');
+          spawnFloatFx('checkpoint', np.x-8, np.y-32, '#7ff0e8');
+        } else if(Game.power===2){
+          Game.arcMeter=Math.min(Game.arcMax, Game.arcMeter+(np.a===32?0.45:0.16));
+        }
+      }
+    } else if(np.type==='charger'){
+      // EV fast-charge bank: stands fully refill the arc-flash meter
+      const dx=Math.abs((p.x+p.w/2)-(np.x+10)), dy=Math.abs((p.y+p.h/2)-(np.y-6));
+      if(dx<26 && dy<40 && Game.power>0){
+        Game.arcMeter=Math.min(Game.arcMax, Game.arcMeter+0.9);
+        if((np.t|0)%5===0) spawnParticles(np.x+10, np.y-10, 1, '#6cf', {up:1.4});
+      }
+    }
+  }
+}
+
+// ===== GADGETS (zone-5/6 gimmicks, see-saws, gates, elevators) =====
+// QR toll gate: a close scan with the wrench opens the run
+function scanGate(L,p){
+  const cx=(p.x+p.w/2)/TILE, cy=(p.y+p.h/2)/TILE;
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    const tx=Math.floor(cx)+dx, ty=Math.floor(cy)+dy;
+    if(tlChar(L,tx,ty)!=='q') continue;
+    const tiles=[];
+    for(let yy=ty-1;yy>=0;yy--) if(tlChar(L,tx,yy)==='q') tiles.push({tx,ty:yy});
+    for(let yy=ty;yy<L.h;yy++) if(tlChar(L,tx,yy)==='q') tiles.push({tx,ty:yy});
+    return {tiles, t:0, x:tx*TILE+8, y:ty*TILE};
+  }
+  return null;
+}
+function qrScanUpdate(L){
+  const qr=Game.qr;
+  if(!qr) return;
+  qr.t++;
+  if((qr.t&1)===0) spawnParticles(qr.x, qr.y+6, 1, '#7ff0e8', {up:0.5, life:0.3});
+  if(qr.t>=45){
+    for(const tt of qr.tiles){
+      L.grid[tt.ty][tt.tx]=' ';
+      spawnParticles(tt.tx*TILE+8, tt.ty*TILE+4, 6, '#7ff0e8', {up:0.9});
+    }
+    AudioEngine.sfx('qrgate');
+    spawnFloatFx('扫码通过 SCAN OK', qr.x-16, qr.y-18, '#7ff0e8');
+    Game.qr=null;
+  }
+}
+function gadgetUpdate(L,dt){
+  if(!L.gadgets||!L.gadgets.length) return;
+  const p=Game.player;
+  for(const g of L.gadgets){
+    g.t=(g.t||0)+1;
+    if(g.type==='seesaw'){
+      g.angle=Math.sin(g.t*0.045)*0.26;
+      if(p&&!p.dead){
+        // one-way plank: recatch the feet on the tilted board every frame
+        const cxp=g.x+g.w/2, pivY=g.y+4;
+        const fx=p.x+p.w/2;
+        if(Math.abs(fx-cxp)<g.w/2-4 && p.vy>=-0.5){
+          const yy=pivY+(fx-cxp)*Math.tan(g.angle);
+          if(p.y+p.h>=yy-3 && p.y+p.h<=yy+8){
+            p.y=yy-p.h; p.vy=0; p.onGround=true;
+            p.coyote=Math.max(p.coyote,5);
+          }
+        }
+      }
+    } else if(g.type==='partgate'){
+      if(!g.opened && L._part){
+        g.opened=true;
+        AudioEngine.sfx('qrgate');
+        spawnFloatFx('配件已认 PART OK', g.x-8, g.y-10, '#ffd266');
+      }
+      if(!g.opened && p&&!p.dead && rectHit(p, g.x, g.y, g.w, g.h)){
+        if(p.x+p.w/2 < g.x+g.w/2) p.x=g.x-p.w-0.01; else p.x=g.x+g.w+0.01;
+        p.vx=0;
+        if(g.cd<=0){ AudioEngine.sfx('clang'); g.cd=20; spawnFloatFx('要备件 PART NEEDED', g.x-12, g.y-8, '#ff9a8a'); }
+      }
+      if(g.cd>0) g.cd--;
+    } else if(g.type==='sitecheck'){
+      // camp site-check kiosk: a 4-step key checklist, no damage on a slip
+      if(g.qte){
+        g.qte.stepT--;
+        const seq=['left','right','up','down'];
+        if(Input.keys[seq[g.qte.step]]){
+          g.qte.step++;
+          g.qte.stepT=72;
+          AudioEngine.sfx('checkpoint');
+          if(g.qte.step>=4){
+            g.qte=null; g.done=true;
+            Game.anodes+=25;
+            AudioEngine.sfx('reward');
+            spawnFloatFx('营位检查合格 +25', g.x-14, g.y-30, '#8fe3b0');
+          }
+        } else if(g.qte.stepT<=0){
+          g.qte.step=0; g.qte.stepT=72;
+          AudioEngine.sfx('spark');
+        }
+      } else if(!g.done && p&&!p.dead){
+        if(Math.abs((p.x+p.w/2)-(g.x+8))<22 && Math.abs((p.y+p.h/2)-(g.y-6))<30 && Input.wrenchJustPressed){
+          g.qte={step:0, stepT:72};
+          AudioEngine.sfx('order');
+          spawnFloatFx('营位检查 SITE CHECK', g.x-16, g.y-30, '#ffd266');
+        }
+      }
+    } else if(g.type==='tunnel'){
+      if(g.cd>0) g.cd--;
+      if(p&&!p.dead && g.cd<=0){
+        const pcx=p.x+p.w/2;
+        if(pcx>g.x && pcx<g.x+g.w){
+          if(!p.crouch){
+            g.cd=120;
+            if(Game.power>0) Game.power--;
+            p.invuln=Math.max(p.invuln,60);
+            spawnFloatFx('擦到空调 SHRED!', pcx-20, p.y-12, '#ff9a8a');
+            spawnParticles(pcx, p.y, 14, '#cfe8ff', {sp:2, up:1.2});
+            AudioEngine.sfx('trip');
+            Game.shake=Math.max(Game.shake,5);
+            hurtPlayerFn(p,1);
+          } else if((g.t&7)===0){
+            spawnParticles(pcx, g.y-20, 1, '#e8f4ff', {up:0.4, life:0.3});
+          }
+        }
+      }
+    } else if(g.type==='lift'){
+      // scissor-jack lift: catch the deck from above, crank it with the wrench
+      if(p&&!p.dead){
+        const onX=Math.abs((p.x+p.w/2)-(g.x+g.w/2))<g.w/2+4;
+        if(onX && p.vy>=-0.5 && p.y+p.h>=g.y-4 && p.y+p.h<=g.y+10){
+          p.y=g.y-p.h; p.vy=0; p.onGround=true;
+          p.coyote=Math.max(p.coyote,5);
+        }
+        if(onX && Math.abs((p.y+p.h)-g.y)<4){
+          const rate=(p.impact>0?1.0:0.5);
+          if(Input.wrench){ g.y=Math.max(g.baseY-64, g.y-rate); if((g.t&2)===0) spawnParticles(g.x+g.w/2, g.y, 1, '#cfd6e0', {up:0.8}); }
+          else if(Input.down){ g.y=Math.min(g.baseY, g.y+rate); }
+          p.y=g.y-p.h; p.vy=0;
+        } else if(g.y<g.baseY){
+          g.y=Math.min(g.baseY, g.y+0.4);
+        }
+      }
+    } else if(g.type==='spinner'){
+      // tire balancer: a deck sweeping a circle, one-way from above
+      const a=g.t*0.02;
+      g.px=g.cx+Math.cos(a)*g.r; g.py=g.cy+Math.sin(a)*g.r*0.55;
+      if(p&&!p.dead && p.vy>=0 && !p.onGround){
+        const dw=26;
+        if(Math.abs((p.x+p.w/2)-g.px)<dw/2 && p.y+p.h>=g.py-2 && p.y+p.h<=g.py+8){
+          p.y=g.py-p.h-0.01; p.vy=0; p.onGround=true;
+        }
+      }
+    }
+  }
+}
+// Z6 high-pass weather: boulders off the scree slope, whiteout gust fronts
+function weatherUpdate(L,dt){
+  const p=Game.player; if(!p) return;
+  L._wT=(L._wT||0)+1;
+  // rockfall: warn marker on the road, then the boulder itself
+  L._rockT=(L._rockT||0)-1;
+  if(L._rockT<=0 && p.x>L.widthPx*0.25){
+    L._rockT=60+((Math.random()*80)|0);
+    L._rocks=L._rocks||[];
+    L._rocks.push({x:Camera.x+60+Math.random()*340, warn:36});
+  }
+  L._rocks=L._rocks||[];
+  for(let i=L._rocks.length-1;i>=0;i--){
+    const rk=L._rocks[i];
+    rk.warn--;
+    if(rk.warn<=0){
+      L.projectiles.push({x:rk.x, y:-10, w:9, h:9, vx:-0.2, vy:2.8, grav:false, t:0, life:150, kind:'rock', draw:fn_rockdraw});
+      L._rocks.splice(i,1);
+      AudioEngine.sfx('rockfall');
+    }
+  }
+  // whiteout gust fronts (streaks warn 5 frames before the push + surge)
+  const cyc=L._wT%260;
+  if(cyc>=145 && cyc<210){
+    if(cyc===150) AudioEngine.sfx('gust');
+    if(cyc>=150) p.vx-=0.09;
+    if((L._wT&3)===0){
+      const wy=Math.random()*VIEW_H;
+      L.particles.push({x:Camera.x+VIEW_W+4, y:wy, vx:-7-Math.random()*3, vy:0, t:0, life:0.5, color:'#eaf2fc', draw:fn_streak});
+    }
+  }
+}
+function fn_streak(){
+  const pa=this;
+  ctx.globalAlpha=Math.max(0,0.7*(1-pa.t/pa.life));
+  ctx.fillStyle=pa.color;
+  ctx.fillRect(Math.round(pa.x-Camera.x), Math.round(pa.y-Camera.y), 16, 1);
+  ctx.globalAlpha=1;
+}
+function fn_rockdraw(){
+  const pr=this, x=Math.round(pr.x-Camera.x), y=Math.round(pr.y-Camera.y);
+  ctx.fillStyle='#7a8aa0'; ctx.fillRect(x,y,9,9);
+  ctx.fillStyle='#9fb4d6'; ctx.fillRect(x+1,y+1,3,3);
+  drawText('~', x+5, y+8, '#5a6a80', 8);
+}
+function fn_gadgetdraw(){
+  const g=this, x=Math.round(g.x-Camera.x), y=Math.round(g.y-Camera.y);
+  if(x<-200||x>VIEW_W+200) return;
+  const camY=Camera.y;
+  if(g.type==='seesaw'){
+    const cx=x+g.w/2, dx=g.w/2;
+    // pivot post (down into the pit)
+    ctx.fillStyle='#6a5a4a';
+    ctx.fillRect(cx-3, y+6, 6, 26);
+    // plank
+    ctx.save();
+    ctx.translate(cx, y+4);
+    ctx.rotate(g.angle);
+    ctx.fillStyle='#c8914f'; ctx.fillRect(-dx, -2, g.w, 5);
+    ctx.fillStyle='#8a5e34'; ctx.fillRect(-dx, 2, g.w, 2);
+    ctx.restore();
+  } else if(g.type==='partgate'){
+    if(g.opened){ ctx.globalAlpha=0.35; }
+    ctx.fillStyle='#b03a2a'; ctx.fillRect(x, y, g.w, g.h);
+    ctx.fillStyle='#e8d5a8'; ctx.fillRect(x+2, y+6, g.w-4, 10);
+    drawText('配件', x+2, y+14, '#5a3a1a', 8, true);
+    ctx.fillStyle='#3a1a12'; ctx.fillRect(x, y+40, g.w, 8);
+    ctx.globalAlpha=1;
+  } else if(g.type==='sitecheck'){
+    // inspection kiosk: clipboard on a post
+    ctx.fillStyle='#8a5a2a'; ctx.fillRect(x+6, y-24, 4, 26);
+    ctx.fillStyle='#e8d5a8'; ctx.fillRect(x, y-30, 18, 22);
+    ctx.fillStyle='#5a4a3a'; ctx.fillRect(x+2, y-27, 14, 2); ctx.fillRect(x+2, y-23, 10, 1); ctx.fillRect(x+2, y-19, 12, 1);
+    drawText('营检', x+3, y-12, '#5a3a1a', 8, true);
+    if(!g.done && g.qte){
+      const seq=['left','right','up','down'];
+      const icons=['←','→','↑','↓'];
+      for(let i=0;i<4;i++){
+        const done2=i<g.qte.step, cur=i===g.qte.step;
+        ctx.fillStyle= done2? '#3a5a3a' : cur? (Math.floor(g.t/4)%2?'#c93a1e':'#3a2a2a') : '#2a2620';
+        ctx.fillRect(x+i*10+2, y+22, 9, 8);
+        ctx.fillStyle= done2? '#8fe3b0' : '#e8d5a8';
+        drawText(icons[i], x+i*10+5, y+29, done2? '#8fe3b0':'#fff');
+      }
+      drawText('营位检查', x+4, y+16, '#ffd266', 8, true);
+    } else if(g.done){
+      drawText('合格', x+4, y+26, '#8fe3b0', 8, true);
+    }
+  } else if(g.type==='tunnel'){
+    const ceilY=Math.round(g.ceil-camY+camY);
+    // concrete portal frame over the road, height warning
+    ctx.fillStyle='#8a929e';
+    ctx.fillRect(x-4, g.y-22, 8, 22);
+    ctx.fillRect(x+g.w-4, g.y-22, 8, 22);
+    ctx.fillRect(x-4, g.y-26, g.w+8, 6);
+    ctx.fillStyle='#c93a1e';
+    ctx.fillRect(x+g.w/2-12, g.y-40, 24, 10);
+    ctx.fillStyle='#fff';
+    drawText('限高 3.2M', x+g.w/2-13, g.y-32, '#fff', 8, true);
+    // low-clearance bar
+    ctx.fillStyle='#23232c';
+    ctx.fillRect(x+4, g.y-20, g.w-8, 3);
+  } else if(g.type==='lift'){
+    // scissor-jack platform
+    const h0=g.baseY-g.y;
+    ctx.fillStyle='#6a7482';
+    ctx.fillRect(x, g.y-2, g.w, 5);
+    ctx.fillStyle='#cfd6e0'; ctx.fillRect(x, g.y-2, g.w, 2);
+    ctx.strokeStyle='#8a929e'; ctx.lineWidth=2;
+    ctx.beginPath();
+    const n=3, segW=g.w/n;
+    for(let i=0;i<n;i++){
+      ctx.moveTo(x+i*segW, g.y+3); ctx.lineTo(x+(i+1)*segW - (i%2? segW*0.4: -segW*0.4), g.y+3+h0*0.9);
+      ctx.moveTo(x+(i+1)*segW, g.y+3); ctx.lineTo(x+(i+1)*segW - segW*0.4, g.y+3+h0*0.9);
+    }
+    ctx.stroke();
+    ctx.fillStyle='#3a3f47'; ctx.fillRect(x-2, g.baseY+1, g.w+4, 4);
+    if(Game.player && Math.abs((Game.player.y+Game.player.h)-g.y)<6) drawText('X 摇柄 CRANK', x+6, g.y-8, '#ffd266', 9, true);
+  } else if(g.type==='spinner'){
+    const sx=Math.round(g.px-Camera.x), sy=Math.round(g.py-Camera.y);
+    ctx.strokeStyle='#5a4632'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(g.cx-Camera.x, g.cy-Camera.y); ctx.lineTo(sx, sy); ctx.stroke();
+    // tire
+    ctx.fillStyle='#23232c'; ctx.beginPath(); ctx.arc(sx, sy, 8, 0, 7); ctx.fill();
+    ctx.fillStyle='#4a525e'; ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, 7); ctx.fill();
+    ctx.fillStyle='#cfd6e0'; ctx.fillRect(sx-8, sy-13, 16, 4);
+  }
+}
+// ===== items (anodes, power-ups, orders) =====
+function itemsUpdate(L,dt){
+  const p=Game.player;
+  for(let i=L.items.length-1;i>=0;i--){
+    const it=L.items[i]; if(!it.active) continue;
+    it.t+=dt*6;
+    // fall + land (one-ways land, bounce pads hop, solids land)
+    if(!it.grounded){
+      if(it.vy===undefined) it.vy=0;
+      it.vy=Math.min(6,it.vy+0.28);
+      const prevFeet=it.y+7;
+      it.y+=it.vy;
+      const feet=it.y+7;
+      const txa=Math.floor((it.x+1)/TILE), txb=Math.floor((it.x+11)/TILE);
+      const tyf=Math.floor(feet/TILE);
+      let landed=false;
+      for(let tx=txa;tx<=txb;tx++){
+        if(isSolid(L,tx,tyf)){ it.y=tyf*TILE-7; it.vy=0; it.grounded=true; landed=true; break; }
+        if(isOneWay(L,tx,tyf) && it.vy>=0 && prevFeet<=tyf*TILE+2 && feet>=tyf*TILE){ it.y=tyf*TILE-7; it.vy=0; it.grounded=true; landed=true; break; }
+        if(isBounce(L,tx,tyf) && it.vy>=0 && feet>=tyf*TILE){ it.y=tyf*TILE-7; it.vy=-4.5; }
+      }
+      if(landed && L.particles){}
+    }
+    if(p && !p.dead && it.type!=='order'){
+      const dx=(p.x+p.w/2)-(it.x+5), dy=(p.y+p.h/2)-(it.y+5);
+      if(Math.abs(dx)<11 && Math.abs(dy)<13){
+        applyItem(it); it.active=false; L.items.splice(i,1);
+      }
+    } else if(p && !p.dead && it.type==='order'){
+      const dx=(p.x+p.w/2)-(it.x+5), dy=(p.y+p.h/2)-(it.y+8);
+      if(Math.abs(dx)<12 && Math.abs(dy)<15){
+        applyItem(it); it.active=false; L.items.splice(i,1);
+      }
+    }
+  }
+}
+function applyItem(it){
+  const p=Game.player;
+  AudioEngine.sfx('anode');
+  switch(it.type){
+    case 'anode':
+      Game.anodes++;
+      if(Game.anodes>=100){ Game.anodes-=100; Game.lives++; AudioEngine.sfx('life'); }
+      break;
+    case 'mooncake': Game.anodes+=5; break;
+    case 'sealant':
+      // self-leveling roof sealant: worth 10, and you now carry a tube to throw
+      Game.anodes+=10;
+      p.seal=Math.min(3,(p.seal||0)+1);
+      spawnFloatFx('封胶 SEALANT +'+p.seal, p.x-6, p.y-8, '#eef8ff');
+      break;
+    case 'torque': Game.power=Math.max(1,Game.power); growPlayer(); break;
+    case 'cee': Game.power=Math.max(2,Game.power); growPlayer(); AudioEngine.sfx('power2'); break;
+    case 'oneup': Game.lives++; AudioEngine.sfx('life'); break;
+    case 'surge': p.surge=Math.max(p.surge, 300); p.invuln=Math.max(p.invuln,300); AudioEngine.sfx('power2'); break;
+    case 'shield': p.shield=true; break;
+    case 'impact': p.impact=Math.max(p.impact, 20*60); AudioEngine.sfx('impact'); break;
+    case 'tea': Game.arcMeter=Game.arcMax; p.coldImmune=Math.max(p.coldImmune||0, 10*60); break;
+    case 'part':
+      // imported part: opens the part-gate checkpoint
+      Game.level._part=true;
+      spawnFloatFx('备件到手 PART GOT', p.x-14, p.y-10, '#ffd266');
+      AudioEngine.sfx('qrgate');
+      break;
+    case 'grease': p.slide=Math.max(p.slide||0, 30*60); p.invuln=Math.max(p.invuln,30); AudioEngine.sfx('slide'); break;
+    case 'order': recordServiceOrder(); break;
+  }
+}
+function growPlayer(){
+  const p=Game.player;
+  if(p){ if(p.h<14){ p.y += (p.h<14)? -0 : 0; } p.h=14; }
+}
+function recordServiceOrder(){
+  const li=Game.levelIndex;
+  const count=Game.servicesFound.filter(s=>s.level===li).length;
+  if(count<3) Game.servicesFound.push({level:li, got:Date.now()});
+  AudioEngine.sfx('order');
+  spawnFloatFx('维修单 +1', Game.player.x+4, Game.player.y-6);
+}
+// ===== SECTION: ENEMIES (stage 4 — §5 failure-mode roster) =====
+// defeat legend: stomp / wrench / arc-flash / grease-slide / special
+const ENEMY_DEF = {
+  goblin:   {w:12,h:12, melee:1, slide:1, stomp:1},        // 漏水精 leak goblin
+  blob:     {w:13,h:11, melee:1, slide:1, stomp:1},        // delam blob (absorbs goblins)
+  crusher:  {w:30,h:16, motor:1},                          // slide-out: stomp/wrench the motor
+  screamer: {w:16,h:12, slide:1, arc:1, clang:1},          // bearing screamer (wrench-proof)
+  miswired: {w:14,h:18, surge:1},                 // miswired pedestal (surge grounds it; touch = damage)
+  serpent:  {w:13,h:14, arc:1, stompSeg:1},                // sewer serpent (segment by segment)
+  mouse:    {w:10,h:8,  melee:1, slide:1, arc:1, stomp:1, chew:1}, // mouse pack (chews wiring)
+  gascloud: {w:16,h:12, arc:'x'},                          // gas cloud (arc-flash ignites it)
+  betty:    {w:14,h:14, melee:1, stomp:1},                 // blowout betty (stomp before it inflates)
+  scalper:  {w:14,h:20, melee:1, slide:1, arc:1, stomp:1, paper:1}, // The Scalper (throws receipts)
+  wraith:   {w:14,h:18, thaw:1, frost:1},                  // freeze wraith (water-heater thaws it)
+  yak:      {w:26,h:18, neutral:1},                        // G318 cross-lane yak (invulnerable plod)
+  wave:     {w:14,h:26, neutral:1},                        // square-dance dancer (sweeping, contact)
+};
+function makeEnemy(kind,x,y,opt){
+  opt=opt||{};
+  const d=ENEMY_DEF[kind];
+  const en={ kind, type:kind, x, y, w:d.w, h:d.h, vx:0, vy:0, t:0, f:opt.facing||-1, hp:1,
+             dead:false, chewTimer:0, draw:fn_enemydraw };
+  if(kind==='serpent'){ en.segs=5; en.hitbox=null; en.baseY=y+d.h; en.rise=0; }
+  if(kind==='crusher'){
+    en.x0=x; en.bx=x; en.by=y; en.dir=opt.dir||1;
+    en.motorX=en.dir>0? x-11 : x+33; en.motorY=y+5;
+    en.phase=0; en.ct=0; en.parked=false;
+  }
+  if(kind==='gascloud'){ en.seed=opt.seed!==undefined?opt.seed:Math.random()*6; en.life=opt.life||600; }
+  if(kind==='scalper'){ en.x0=x; en.aimT=0; }
+  if(kind==='blob'){ en.phase='swell'; en.phaseT=0; }
+  if(kind==='yak'){ en.x0=x; en.rng=opt.rng!==undefined?opt.rng:48; en.spd=opt.spd||0.32; en.bellT=0; }
+  if(kind==='wave'){ en.x0=x; en.rng=opt.rng!==undefined?opt.rng:40; en.baseY=y; }
+  return en;
+}
+function enRect(en){
+  if(en.dead) return null;
+  switch(en.kind){
+    case 'serpent': return en.hitbox;
+    case 'blob': return en.phase==='swell'? null : {x:en.x,y:en.y,w:en.w,h:en.h};
+    case 'crusher': return en.parked? null : {x:en.bx,y:en.by,w:30,h:16};
+    case 'betty': { const big=en.t>=120; return {x:en.x-2,y:en.y-(big?4:0),w:en.w+4,h:en.h+(big?4:0)}; }
+    default: return {x:en.x,y:en.y,w:en.w,h:en.h};
+  }
+}
+function edgeAhead(L,en){
+  const tx=Math.floor((en.f>0? en.x+en.w+2 : en.x-2)/TILE);
+  const ty=Math.floor((en.y+en.h+2)/TILE);
+  return !isSolid(L,tx,ty)&&!isOneWay(L,tx,ty);
+}
+function moveEnemy(L,en){
+  en.vy=Math.min((en.vy||0)+0.3, MAX_FALL);
+  en.x+=en.vx;
+  en.blocked=false;
+  let hit=solidAt(L,{x:en.x,y:en.y,w:en.w,h:en.h});
+  if(hit){
+    if(en.vx>0) en.x=hit.tx*TILE-en.w-0.01;
+    else if(en.vx<0) en.x=(hit.tx+1)*TILE+0.01;
+    en.vx=0; en.blocked=true;
+  }
+  const feetPrev=en.y+en.h;
+  en.y+=en.vy;
+  en.onG=false;
+  hit=solidAt(L,{x:en.x,y:en.y,w:en.w,h:en.h});
+  if(hit){
+    if(en.vy>0){ en.y=hit.ty*TILE-en.h-0.01; en.vy=0; en.onG=true; }
+    else { en.y=(hit.ty+1)*TILE+0.01; en.vy=0; }
+  }
+  if(en.vy>=0){
+    const ty=Math.floor((en.y+en.h)/TILE);
+    const tx0=Math.floor((en.x+1)/TILE), tx1=Math.floor((en.x+en.w-1)/TILE);
+    for(let tx=tx0;tx<=tx1;tx++){
+      if(isOneWay(L,tx,ty)){
+        const top=ty*TILE;
+        if(feetPrev<=top+1 && en.y+en.h>=top){ en.y=top-en.h-0.01; en.vy=0; en.onG=true; }
+      }
+    }
+  }
+}
+function updateEnemy(L,en){
+  en.t++;
+  const p=Game.player;
+  switch(en.kind){
+    case 'goblin': {
+      if(en.turnCd>0) en.turnCd--;
+      if((en.blocked||edgeAhead(L,en))&&en.turnCd===0){ en.f*=-1; en.turnCd=30; }
+      en.vx=0.45*en.f;
+      moveEnemy(L,en);
+      break;
+    }
+    case 'mouse': {
+      const wx=en.f>0? en.x+en.w+2 : en.x-2;
+      const wt={ tx:Math.floor(wx/TILE), ty:Math.floor((en.y+en.h/2)/TILE) };
+      const chewing=tlChar(L,wt.tx,wt.ty)==='W';
+      if(!chewing){
+        const dx=p&&p.x!==undefined? (p.x+p.w/2)-(en.x+en.w/2):0;
+        const dy=p? (p.y+p.h/2)-(en.y+en.h/2):0;
+        if(p&&!p.dead&&Math.abs(dx)<100&&Math.abs(dy)<40){
+          en.f=dx>0?1:-1; en.vx=1.9*en.f;
+        } else {
+          if(en.turnCd>0) en.turnCd--;
+          if((en.blocked||edgeAhead(L,en))&&en.turnCd===0){ en.f*=-1; en.turnCd=40; }
+          en.vx=0.5*en.f;
+        }
+      } else { en.vx=0.3*en.f; en.turnCd=0; }
+      if(chewing){
+        en.chewTimer=(en.chewTimer||0)+1;
+        if(en.chewTimer>=35){ breakWire(L,wt.tx,wt.ty); en.chewTimer=0; }
+      } else if(en.chewTimer>0) en.chewTimer=0;
+      moveEnemy(L,en);
+      break;
+    }
+    case 'screamer': {
+      if(p&&!p.dead){ en.f=(p.x+p.w/2)>(en.x+en.w/2)?1:-1; }
+      if(en.turnCd>0) en.turnCd--;
+      if(en.blocked&&en.turnCd===0){ en.f*=-1; en.turnCd=50; }
+      en.vx=1.7*en.f;
+      moveEnemy(L,en);
+      if(en.t%4===0) spawnParticles(en.x+en.w/2,en.y+en.h,1,'#a04a2a',{up:0.4});
+      break;
+    }
+    case 'blob': {
+      if(en.phase==='swell'){
+        en.phaseT++;
+        if(en.phaseT>=50){ en.phase='fly'; en.vx=(Math.random()<0.5?-1:1)*1.8; }
+      } else {
+        if(!en.vx) en.vx=1.8;
+        moveEnemy(L,en);
+        if(en.onG) en.vy=-4.6;
+      }
+      // absorbs a drip goblin -> grows, takes 2 hits
+      for(let i=L.enemies.length-1;i>=0;i--){
+        const o=L.enemies[i];
+        if(o!==en&&!o.dead&&o.kind==='goblin'&&rectHit(en,o.x,o.y,o.w,o.h)){
+          if(!en.grown){
+            o.dead=true; en.grown=true; en.w+=5; en.h+=5; en.y-=5; en.hp=2;
+            spawnParticles(o.x+6,o.y+6,10,'#8bd','#4d8dff');
+          }
+        }
+      }
+      break;
+    }
+    case 'miswired': {
+      if(en.t%12===0) spawnParticles(en.x+en.w/2,en.y+6,2,'#aef',{up:0.4});
+      break;
+    }
+    case 'crusher': {
+      if(en.parked) break;
+      en.ct++;
+      const cyc=en.ct%200;
+      const SEG=[70,30,26,26,26]; let ph=0,acc=0;
+      for(let s=0;s<5;s++){ acc+=SEG[s]; if(cyc<acc){ ph=s; break; } }
+      en.phase=ph;
+      if(ph===2){ en.bx+=1.2*en.dir; if(en.ct%3===0) spawnParticles(en.bx+(en.dir>0?30:0),en.by+8,1,'#5a6472',{up:0.2}); }
+      else if(ph===4){ en.bx-=1.2*en.dir; }
+      else if(ph===1&&en.ct%8===0) spawnParticles(en.motorX+4,en.motorY+5,1,'#ffd266',{up:0.3});
+      break;
+    }
+    case 'serpent': {
+      const cyc=en.t%190;
+      en.rise=cyc<95? Math.sin(cyc/95*Math.PI)*35 : 0;
+      en.hitbox=en.rise>6? {x:en.x,y:en.baseY-en.rise,w:13,h:en.rise} : null;
+      break;
+    }
+    case 'gascloud': {
+      en.life--;
+      en.x+=0.35*Math.sin(en.t*0.045+en.seed);
+      en.y+=0.3*Math.cos(en.t*0.038+en.seed*2);
+      if(en.life<=0) en.dead=true;
+      break;
+    }
+    case 'betty': {
+      if(en.t===120) spawnFloatFx('!',en.x+4,en.y-10,'#fd8');
+      if(en.t>=240&&!en.popped){
+        en.popped=true; en.dead=true;
+        const cx=en.x+en.w/2, cy=en.y+10;
+        Game.shake=Math.max(Game.shake,7);
+        Game.flash=Math.max(Game.flash,0.4);
+        spawnParticles(cx,cy,16,'#ffd266',{up:2.2,sp:3});
+        AudioEngine.sfx('boom');
+        if(p&&!p.dead&&Math.hypot((p.x+p.w/2)-cx,(p.y+p.h/2)-cy)<48) hurtPlayerFn(p,1);
+        for(const o of L.enemies){ if(o!==en&&!o.dead&&Math.hypot((o.x+o.w/2)-cx,(o.y+o.h/2)-cy)<48) o.dead=true; }
+      }
+      break;
+    }
+    case 'scalper': {
+      en.aimT=(en.aimT||0)+1;
+      if(en.aimT>=130){
+        en.aimT=0;
+        const pf=p&&!p.dead? ((p.x+p.w/2)>(en.x+en.w/2)?1:-1) : en.f;
+        L.projectiles.push({x:en.x+en.w/2, y:en.y+5, w:5, h:4, vx:2.3*pf, vy:-2.6, grav:true, t:0, life:90, kind:'paper', draw:fn_paperdraw});
+        AudioEngine.sfx('paper');
+      }
+      if(en.x>en.x0+48) en.f=-1;
+      if(en.x<en.x0-48) en.f=1;
+      en.vx=0.5*en.f;
+      moveEnemy(L,en);
+      break;
+    }
+    case 'yak': {
+      // plodding cross-lane yak: invulnerable, just keeps walking its patrol
+      if(en.x>en.x0+en.rng) en.f=-1;
+      if(en.x<en.x0-en.rng) en.f=1;
+      en.vx=en.spd*en.f;
+      moveEnemy(L,en);
+      if(en.onG&&en.t%24===0) spawnParticles(en.x+en.w/2,en.y+en.h,1,'#d8d2c4',{up:0.4});
+      break;
+    }
+    case 'wave': {
+      // square-dance dancer: sweeps a fixed line to the rhythm
+      const ph=en.t*0.022;
+      en.x=en.x0+Math.sin(ph)*en.rng;
+      en.y=en.baseY;
+      break;
+    }
+    case 'wraith': {
+      if(p&&!p.dead){
+        const dx=(p.x+p.w/2)-(en.x+en.w/2), dy=(p.y+p.h/2)-(en.y+en.h/2);
+        const d=Math.hypot(dx,dy)||1;
+        en.x+=Math.max(-0.4,Math.min(0.4,dx/d*0.32));
+        en.y+=Math.max(-0.3,Math.min(0.3,dy/d*0.26));
+      } else {
+        en.y-=0.15;
+      }
+      // water-heater steam thaws it (search ±2 tiles)
+      const ex=Math.floor((en.x+en.w/2)/TILE), ey=Math.floor((en.y+en.h/2)/TILE);
+      thawed:
+      for(let oy=-2;oy<=2;oy++)for(let ox=-2;ox<=2;ox++){
+        if(tlChar(L,ex+ox,ey+oy)==='h'){
+          defeatEnemy(L,en);
+          spawnFloatFx('thawed',en.x,en.y-8,'#aef');
+          break thawed;
+        }
+      }
+      break;
+    }
+  }
+}
+function enemiesUpdate(L,dt){
+  if(!L.enemies) return;
+  const p=Game.player;
+  // open vents drip drip-goblins until the player wrench-caps them
+  if(L.vents&&L.vents.length){
+    let live=0;
+    for(const en of L.enemies) if(en.kind==='goblin'&&!en.dead&&en.vent) live++;
+    L.ventT=(L.ventT||0)+1;
+    if(live<5&&L.ventT>=200){
+      const open=L.vents.filter(v=>tlChar(L,v.tx,v.ty)==='V');
+      if(open.length){
+        L.ventT=0;
+        const v=open[(Math.random()*open.length)|0];
+        const g=makeEnemy('goblin',v.tx*TILE+1,(v.ty-1)*TILE+10,{});
+        g.vent=true;
+        L.enemies.push(g);
+        AudioEngine.sfx('drip');
+      }
+    }
+  }
+  for(let i=L.enemies.length-1;i>=0;i--){
+    const en=L.enemies[i];
+    if(en.dead){ L.enemies.splice(i,1); continue; }
+    updateEnemy(L,en);
+    if(en.dead){ L.enemies.splice(i,1); continue; }
+    if(en.y>L.h*TILE+80||en.x<-80||en.x>L.w*TILE+80){ L.enemies.splice(i,1); continue; }
+    if(p&&!p.dead){
+      // crusher motor: stomp or wrench it to park the drawer
+      if(en.kind==='crusher'&&!en.parked&&rectHit(p,en.motorX,en.motorY,9,11)){
+        if((p.vy>0.3&&(p.y+p.h)-en.motorY<9)||p.swing>0){
+          parkCrusher(L,en);
+          if(p.vy>0.3&&(p.y+p.h)-en.motorY<9) p.vy=-STOMP_BOUNCE;
+        }
+      }
+      const hr=enRect(en);
+      if(hr&&rectHit(p,hr.x,hr.y,hr.w,hr.h)) resolvePlayerTouch(L,en,hr);
+    }
+  }
+}
+function resolvePlayerTouch(L,en,hr){
+  const p=Game.player;
+  if(p.dead) return;
+  const stomp=p.vy>0.3&&(p.y+p.h)-hr.y<9;
+  if(ENEMY_DEF[en.kind].neutral){
+    // invulnerable fauna: no stomp, no wrench — get shoved
+    if(en.kind==='yak'){ p.vx=(p.x+p.w/2)<hr.x+hr.w/2? -2.6 : 2.6; p.vy=-2.8; spawnFloatFx('让开 LET THROUGH', p.x-8, p.y-10, '#e8e2d8'); }
+    hurtPlayerFn(p,1);
+    return;
+  }
+  switch(en.kind){
+    case 'crusher':
+      if(en.parked) return;
+      killPlayerFn(p,'crush');
+      return;
+    case 'serpent':
+      if(stomp){ popSerpentSeg(L,en); p.vy=-STOMP_BOUNCE; return; }
+      hurtPlayerFn(p,1);
+      return;
+    case 'gascloud':
+      hurtPlayerFn(p,1);
+      return;
+    case 'wraith':
+      hurtPlayerFn(p,1);
+      wraithFreezeTile(L,en);
+      return;
+    case 'screamer':
+      if(p.slideT>0&&ENEMY_DEF.screamer.slide){ defeatEnemy(L,en); return; }
+      hurtPlayerFn(p,1);
+      return;
+    case 'betty':
+      if(stomp&&en.t<120){ defeatEnemy(L,en); p.vy=-STOMP_BOUNCE; return; }
+      hurtPlayerFn(p,1);
+      return;
+  }
+  // generic roster
+  if(stomp&&ENEMY_DEF[en.kind].stomp){
+    defeatEnemy(L,en);
+    p.vy=-(p.impact>0? STOMP_BOUNCE*1.25 : STOMP_BOUNCE);
+    return;
+  }
+  if(stomp){ hurtPlayerFn(p,1); return; }
+  if(p.slideT>0&&ENEMY_DEF[en.kind].slide){ defeatEnemy(L,en); return; }
+  if(en.kind==='miswired'&&p.surge>0){ defeatEnemy(L,en); return; }
+  hurtPlayerFn(p,1);
+}
+function defeatEnemy(L,en){
+  if(en.dead) return;
+  en.hp=(en.hp||1)-1;
+  if(en.hp>0){
+    spawnParticles(en.x+en.w/2,en.y+en.h/2,6,'#fff',{up:1});
+    AudioEngine.sfx('clang');
+    return;
+  }
+  en.dead=true;
+  const cx=en.x+en.w/2, cy=en.y+en.h/2;
+  const col=en.kind==='gascloud'?'#b8c48a': en.kind==='wraith'?'#bfe8ff': en.kind==='serpent'?'#7fd0d0':'#d9a44a';
+  spawnParticles(cx,cy,10,col,{up:1.4});
+  AudioEngine.sfx('kill');
+  spawnFloatFx('+1',cx-4,cy-10,'#ffd266');
+  Game.anodes++;
+  if(Math.random()<0.25){ const it=makeItem('anode',cx-4,cy-8); it.vy=-3.5; L.items.push(it); }
+}
+function popSerpentSeg(L,en){
+  if(en.dead||!en.segs) return;
+  en.segs--;
+  spawnParticles(en.x+6,(en.hitbox?en.hitbox.y:en.y)+4,8,'#7fd0d0',{up:1.2});
+  AudioEngine.sfx('pop');
+  Game.anodes++;
+  if(en.segs<=0){ en.hitbox=null; defeatEnemy(L,en); }
+}
+function parkCrusher(L,en){
+  if(en.parked) return;
+  en.parked=true; en.bx=en.x0; en.ct=0;
+  spawnParticles(en.x0+15,en.by+8,10,'#cfd6e0',{up:1.5});
+  AudioEngine.sfx('park');
+  spawnFloatFx('parked',en.x0,en.by-14,'#7ff0e8');
+  Game.anodes+=2;
+}
+function gasExplode(L,en){
+  if(en.dead) return;
+  en.dead=true;
+  const cx=en.x+en.w/2, cy=en.y+en.h/2;
+  Game.shake=Math.max(Game.shake,10);
+  Game.flash=Math.max(Game.flash,0.5);
+  spawnParticles(cx,cy,18,'#ffd266',{up:2,sp:3});
+  spawnParticles(cx,cy,10,'#ff8a3c',{up:1.5,sp:2});
+  AudioEngine.sfx('boom');
+  const p=Game.player;
+  if(p&&!p.dead&&Math.hypot((p.x+p.w/2)-cx,(p.y+p.h/2)-cy)<44) hurtPlayerFn(p,1);
+  for(const o of L.enemies){
+    if(o!==en&&!o.dead&&Math.hypot((o.x+o.w/2)-cx,(o.y+o.h/2)-cy)<44) o.dead=true;
+  }
+}
+function wraithFreezeTile(L,en){
+  const cx=Math.floor((en.x+en.w/2)/TILE), cy=Math.floor((en.y+en.h)/TILE);
+  for(let dy=0;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    const c=tlChar(L,cx+dx,cy+dy);
+    if(c==='^'||c==='='||c==='A'){
+      L.grid[cy+dy][cx+dx]='Q';
+      spawnParticles((cx+dx)*TILE+8,(cy+dy)*TILE+8,5,'#bfe8ff',{up:0.6});
+      AudioEngine.sfx('frost');
+      return;
+    }
+  }
+}
+function fn_enemydraw(){
+  const en=this, x=Math.round(en.x-Camera.x), y=Math.round(en.y-Camera.y), t=en.t||0;
+  if(en.kind==='goblin'){
+    ctx.fillStyle='#7a9e5a'; ctx.fillRect(x+1,y+4,10,7);
+    ctx.fillStyle='#c9e8a8'; ctx.fillRect(x+3,y,6,5);
+    ctx.fillStyle='#26421a'; ctx.fillRect(x+4,y+2,1,1); ctx.fillRect(x+7,y+2,1,1);
+    const s=Math.abs(Math.sin(t*0.3));
+    ctx.fillStyle='#5a7e4a'; ctx.fillRect(x+2,s>0.5?1:2,y+11,3,1); ctx.fillRect(x+7,s>0.5?2:1,y+11,3,1);
+  } else if(en.kind==='blob'){
+    if(en.phase==='swell'){
+      const s=Math.min(1,en.phaseT/50);
+      const w2=Math.max(3,Math.round(en.w*s)), h2=Math.max(3,Math.round(en.h*s));
+      ctx.fillStyle='#6db3d6'; ctx.fillRect(x+((en.w-w2)>>1), y+en.h-h2, w2, h2);
+      ctx.fillStyle='#bfe4f2'; ctx.fillRect(x+((en.w-w2)>>1)+2, y+en.h-h2+2, 3, 2);
+    } else {
+      const sq=en.onG?2:0;
+      ctx.fillStyle='#6db3d6'; ctx.fillRect(x,y+sq,en.w,en.h-sq);
+      ctx.fillStyle='#bfe4f2'; ctx.fillRect(x+3,y+2+sq,4,2);
+      if(en.grown){ ctx.fillStyle='#4d8dff'; ctx.fillRect(x+en.w-4,y+2+sq,3,3); }
+    }
+  } else if(en.kind==='crusher'){
+    const bx=Math.round(en.bx-Camera.x);
+    if(en.parked) ctx.globalAlpha=0.45;
+    ctx.fillStyle='#8892a0'; ctx.fillRect(bx,y,30,16);
+    ctx.fillStyle='#5a6472'; ctx.fillRect(bx,y,30,3); ctx.fillRect(bx,y+13,30,3);
+    ctx.fillStyle='#39424e'; ctx.fillRect(bx+4,y+4,2,8); ctx.fillRect(bx+12,y+4,2,8); ctx.fillRect(bx+20,y+4,2,8);
+    ctx.globalAlpha=1;
+    const mx=Math.round(en.motorX-Camera.x), my=Math.round(en.motorY-Camera.y);
+    ctx.fillStyle='#6a7482'; ctx.fillRect(mx,my,9,11);
+    ctx.fillStyle='#39424e'; ctx.fillRect(mx+2,my+2,5,5);
+    if(!en.parked&&en.phase===1&&Math.floor(t/4)%2===0){ ctx.fillStyle='#ffd266'; ctx.fillRect(mx+3,my+3,3,3); ctx.fillRect(bx+14,y+6,3,4); }
+  } else if(en.kind==='screamer'){
+    ctx.fillStyle='#c2452a'; ctx.fillRect(x,y+2,en.w,6);
+    ctx.fillStyle='#8a2a18'; ctx.fillRect(x,y+8,4,4); ctx.fillRect(x+en.w-4,y+8,4,4);
+    ctx.fillStyle='#e8e4da'; ctx.fillRect(x+4,y+7,8,5);
+    ctx.fillStyle='#444'; ctx.fillRect(x+4+((t>>2)%6),y+8,2,2);
+    ctx.fillStyle='#111'; ctx.fillRect(x+3,y+4,2,1); ctx.fillRect(x+en.w-5,y+4,2,1);
+  } else if(en.kind==='miswired'){
+    ctx.fillStyle='#9aa2aa'; ctx.fillRect(x+1,y+8,12,10);
+    ctx.fillStyle='#c93a1e'; ctx.fillRect(x+4,y,6,10);
+    ctx.fillStyle='#111'; ctx.fillRect(x+5,y+2,4,2);
+    const sp=(t>>2)%10;
+    ctx.fillStyle='#aef'; ctx.fillRect(x+2+sp%8,y-2+(sp%3),2,1);
+  } else if(en.kind==='serpent'){
+    const rise=en.rise||0;
+    if(rise>2){
+      const topY=Math.round(en.baseY-rise-Camera.y);
+      for(let s=0;s<en.segs;s++){
+        const sy=topY+Math.round(s*(rise/5));
+        ctx.fillStyle=s===0?'#7fd0d0':'#4a9e9e';
+        ctx.fillRect(x+3,sy,7,Math.ceil(rise/5)+1);
+      }
+      ctx.fillStyle='#aef0f0'; ctx.fillRect(x+2,topY-4,9,6);
+      ctx.fillStyle='#111'; ctx.fillRect(x+4,topY-3,1,1); ctx.fillRect(x+8,topY-3,1,1);
+    } else {
+      ctx.fillStyle='#4a9e9e'; ctx.fillRect(x+2,y+8,9,5);
+      ctx.fillStyle='#7fd0d0'; ctx.fillRect(x+3,y+7,7,3);
+    }
+  } else if(en.kind==='mouse'){
+    const w2=Math.sin(t*0.5)>0?1:0;
+    ctx.fillStyle='#8a8a98'; ctx.fillRect(x+(en.f>0?-3:en.w),y+4-w2,3,1);
+    ctx.fillStyle='#9a9aa8'; ctx.fillRect(x,y+3,en.w,5);
+    ctx.fillStyle='#9a9aa8'; ctx.fillRect(x+(en.f>0?en.w-3:-2),y+2,3,3);
+    ctx.fillStyle='#111'; ctx.fillRect(x+(en.f>0?en.w-1:-1),y+3,1,1);
+    if(en.chewTimer>0&&Math.floor(t/4)%2===0){ ctx.fillStyle='#d84a2a'; ctx.fillRect(x+(en.f>0?en.w+2:-4),y+4,2,1); }
+  } else if(en.kind==='gascloud'){
+    ctx.globalAlpha=0.75;
+    ctx.fillStyle='#b8c48a';
+    ctx.beginPath();
+    ctx.arc(x+5,y+6,4+(t%3),0,7); ctx.arc(x+11,y+5,5,0,7); ctx.arc(x+8,y+9,4,0,7);
+    ctx.fill();
+    ctx.globalAlpha=1;
+  } else if(en.kind==='betty'){
+    const big=en.t>=120, wob=(big&&Math.floor(t/4)%2===0);
+    ctx.fillStyle='#d8dee6'; ctx.fillRect(x-1,y+(big?4:0)+(wob?1:0),en.w+2,en.h-(big?4:0));
+    ctx.fillStyle='#c93a1e'; ctx.fillRect(x-1,y+(big?4:0),en.w+2,4);
+    ctx.fillStyle='#39424e'; ctx.fillRect(x+2,y+(big?4:0)+7,2,2);
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(x+en.w/2+1,y+8+(big?4:0),2.5,0,7); ctx.fill();
+    ctx.fillStyle='#111'; ctx.fillRect(x+en.w/2,y+7+(big?4:0),2,1);
+  } else if(en.kind==='scalper'){
+    ctx.fillStyle='#d9d2c2'; ctx.fillRect(x+2,y+6,10,12);
+    ctx.fillStyle='#efe8d8'; ctx.fillRect(x+3,y,8,7);
+    ctx.fillStyle='#8a8272'; ctx.fillRect(x+1,y+1,12,2);
+    ctx.fillStyle='#111'; ctx.fillRect(x+5,y+4,1,1); ctx.fillRect(x+8,y+4,1,1);
+    ctx.fillStyle='#e8e2d2'; ctx.fillRect(x+1,y+17,12,2);
+  } else if(en.kind==='wraith'){
+    const bob=Math.sin(t*0.08)*2;
+    ctx.globalAlpha=0.7;
+    ctx.fillStyle='#bfe8ff';
+    ctx.fillRect(x+2,y+bob,10,14);
+    ctx.fillRect(x+4,y-3+bob,6,4);
+    ctx.fillStyle=(t>>3)%2?'#8fd0f0':'#bfe8ff';
+    ctx.fillRect(x+2,y+14+bob,2,2); ctx.fillRect(x+6,y+15+bob,2,2); ctx.fillRect(x+10,y+14+bob,2,2);
+    ctx.fillStyle='#2a4a6a'; ctx.fillRect(x+5,y+1+bob,2,2); ctx.fillRect(x+8,y+1+bob,2,2);
+    ctx.globalAlpha=1;
+  } else if(en.kind==='yak'){
+    // shaggy highland yak: big body, horns, cowbell, slow leg shuffle
+    const f2=en.f||-1, lg=(Math.floor(t/12)%2);
+    ctx.fillStyle='#39424e';
+    ctx.fillRect(x+3+(lg?0:1),y+16,4,2); ctx.fillRect(x+18-(lg?0:1),y+16,4,2);
+    ctx.fillStyle='#e8e2d8'; ctx.fillRect(x,y+4,en.w,12);
+    ctx.fillStyle='#d8d2c4'; ctx.fillRect(x,y+4,en.w,3);
+    ctx.fillStyle='#cfc8ba'; ctx.fillRect(x+(f2>0?en.w-11:1),y+1,10,9);
+    ctx.fillStyle='#f0e6d2';
+    ctx.fillRect(x+(f2>0?en.w-10:2),y-3,2,4); ctx.fillRect(x+(f2>0?en.w-1:0),y-1,2,4);
+    ctx.fillStyle='#2a2620'; ctx.fillRect(x+(f2>0?en.w-8:4),y+4,1,2);
+    ctx.fillStyle='#c93a1e'; ctx.fillRect(x+(f2>0?en.w-9:3),y+9,2,3);
+  } else if(en.kind==='wave'){
+    // square-dance dancer: red scarf, arms swinging to the beat
+    const sw=Math.sin(en.t*0.22);
+    ctx.fillStyle='#39424e'; ctx.fillRect(x+3,y+18,3,6); ctx.fillRect(x+8,y+18,3,6);
+    ctx.fillStyle='#8a3a5a'; ctx.fillRect(x+3,y+8,8,11);
+    ctx.fillStyle='#e8b06a'; ctx.fillRect(x+4,y+2,6,6);
+    ctx.fillStyle='#5a3a2a'; ctx.fillRect(x+4,y,6,2);
+    ctx.fillStyle='#c93a1e';
+    ctx.fillRect(x+(sw>0?-4:en.w+1),y+8+(sw>0?0:2),en.w+2,2);
+    ctx.fillStyle='#d8dee6'; ctx.fillRect(x+(sw>0?en.w-3:-3),y+9+(sw>0?0:2),3,2);
+  }
+}
+function fn_paperdraw(){
+  const pr=this, x=Math.round(pr.x-Camera.x), y=Math.round(pr.y-Camera.y);
+  ctx.save(); ctx.translate(x+2,y+2); ctx.rotate(pr.t*0.25);
+  ctx.fillStyle='#fff'; ctx.fillRect(-3,-2,6,5);
+  ctx.fillStyle='#c33'; ctx.fillRect(-3,-2,6,1);
+  ctx.restore();
+}
+function floatsUpdate(L,dt){
+  for(let i=L.floats.length-1;i>=0;i--){
+    const f=L.floats[i]; f.t+=dt; f.y-=dt*12;
+    if(f.t>f.life) L.floats.splice(i,1);
+  }
+}
+function particlesUpdate(L,dt){
+  const arr=L.particles;
+  for(let i=arr.length-1;i>=0;i--){
+    const pa=arr[i]; pa.t+=dt; pa.vy=(pa.gy?pa.gy:0.3); pa.x+=pa.vx; pa.y+=pa.vy;
+    if(pa.t>pa.life) arr.splice(i,1);
+  }
+}
+function spawnParticles(x,y,n,color,opt){
+  if(!Game.level) return;
+  opt=opt||{};
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, sp=Math.random()*(opt.sp||2)+0.5;
+    Game.level.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-(opt.up||0),t:0,life:(opt.life||0.5)+Math.random()*0.3,color,draw:fn_pdrawing});
+  }
+}
+function fn_pdrawing(){ const pa=this; ctx.globalAlpha=Math.max(0,1-pa.t/pa.life); ctx.fillStyle=pa.color; ctx.fillRect(Math.round(pa.x-Camera.x),Math.round(pa.y-Camera.y),2,2); ctx.globalAlpha=1; }
+function projectilesUpdate(L,dt){
+  for(let i=L.projectiles.length-1;i>=0;i--){
+    const pr=L.projectiles[i]; pr.t+=dt;
+    pr.x+=pr.vx; pr.y+=pr.vy; if(pr.grav) pr.vy = Math.min(pr.vy+ARC_GRAV, MAX_FALL);
+    if(pr.kind==='seal'){ L._sealX=pr.x; L._sealY=pr.y; }
+    let dead=false;
+    // cull
+    if(pr.t>pr.life || pr.x<-40 || pr.x>L.widthPx+40 || pr.y>L.heightPx+40) dead=true;
+    if(!dead){
+      const h=solidAt(L,{x:pr.x,y:pr.y,w:pr.w,h:pr.h});
+      if(h){
+        if(pr.kind==='seal'){
+          const ok=sealHit(L);
+          dead=true;
+          spawnParticles(pr.x+3,pr.y+2,6,'#f4f2ea',{up:ok?1.3:0.5});
+          if(!ok) AudioEngine.sfx('splat');
+        } else if(pr.kind==='rock'){
+          dead=true;
+          spawnParticles(pr.x+3,pr.y+6,10,'#9aa8c0',{sp:1.5,up:0.9});
+          const _rp=Game.player;
+          if(_rp&&!_rp.dead&&_rp.invuln<=0&&_rp.surge<=0&&rectHit(_rp,pr.x,pr.y,pr.w,pr.h)) hurtPlayerFn(_rp,1);
+        } else {
+          if(tlChar(L,h.tx,h.ty)==='B') breakBlock(L,h.tx,h.ty);
+          dead=true;
+          spawnParticles(pr.x+3,pr.y+2,6,'#cfe8ff',{up:1});
+        }
+      } else if(pr.kind==='paper'){
+        const pp=Game.player;
+        if(pp&&!pp.dead&&rectHit(pp,pr.x,pr.y,pr.w,pr.h)){
+          hurtPlayer(pp,1);
+          dead=true;
+          spawnParticles(pr.x+2,pr.y+2,5,'#fff',{up:0.8});
+        }
+      }
+    }
+    if(dead){ L.projectiles.splice(i,1); continue; }
+    if(pr.hit && pr.hit()){ L.projectiles.splice(i,1); continue; }
+  }
+}
+function floatsFxUpdate(){}
+function spawnFloatFx(txt,x,y,color){ if(!Game.level) return; Game.level.floats.push({txt,x,y,c:color||'#fff',t:0,life:1.1, draw:fn_floatdraw}); }
+function fn_floatdraw(){ const f=this; const x=Math.round(f.x-Camera.x), y=Math.round(f.y-Camera.y); ctx.globalAlpha=Math.min(1,(f.life-f.t)*1.6); ctx.fillStyle=f.c||'#fff'; ctx.font='8px monospace'; ctx.fillText(f.txt,Math.round(x),Math.round(y)); ctx.globalAlpha=1; }
+
+function startFromTitle(){
+  if(Game.state!=='title') return;
+  AudioEngine.init();
+  restartRun();
+  Game._mapNext=null; Game.state='map'; Game._mapT=0; // restartRun already loaded level 0; don't re-load (would shift the RNG for later levels)
+}
+function restartRun(){
+  Game.lives=3; Game.anodes=0; Game.power=0; Game.arcMeter=0; Game.multiplier=1;
+  Game.levelIndex=0; Game.servicesFound=[];
+  loadLevel(0);
+}
+function loadLevel(i){
+  const d=LEVELS[i];
+  if(!d){ Game.state='over'; return; }
+  Game.levelIndex=i;
+  Game.level=makeLevel(d);
+  Game.level.final=!!d.final;
+  Game.level.bossIntro=d.bossIntro||null;
+  Game.level.entities=d.entities||[];
+  spawnLevelActors(Game.level);
+  const s=d.spawn;
+  Game.player=newPlayer(s.x*TILE, s.y*TILE);
+  Game.player._sx=s.x; Game.player._sy=s.y;
+  Game.player.vx=0;
+  Camera.x=Math.max(0, s.x*TILE - VIEW_W/2); Camera.y=0; Camera.lookAhead=0;
+  Game.timer=300;
+  Game.hatchState={};
+  Game.arcMeter = Game.power===2?60: (Game.power===1?30:0);
+  syncZoneLevels();
+  AudioEngine.music(d.music);
+  Game._enterHeld=false;
+  Game._introT = d.bossIntro ? 170 : 0;
+}
+function onLevelClear(){
+  Game.level.cleared=true; Game.level.clearedAt=Game.timer;
+  Game.state='clear';
+}
+function killPlayerFn(p,cause){
+  if(p.dead) return;
+  p.dead=true; p.vy=-7; p.deathT=0;
+  Game.shake=8; AudioEngine.sfx('death');
+  setTimeout(()=>{
+    if(Game.lives>1){
+      Game.lives--;
+      // respawn at checkpoint (carry checkpoint/_sx/_sy across the new object)
+      const old=Game.player;
+      Game.player=newPlayer(
+        (old.checkpoint?old.checkpoint.x:old._sx)*TILE,
+        (old.checkpoint?old.checkpoint.y:old._sy)*TILE);
+      Game.player.checkpoint=old.checkpoint;
+      Game.player._sx=old._sx; Game.player._sy=old._sy;
+      Game.player.invuln=90; // spawn i-frames so a respawn isn't instantly lethal
+      if(Game.level && Game.level.auto) Game.level._autoX=Math.max(0,Math.round(Game.player.x-8)); // convoy re-forms behind you
+      Game.state='play';
+    } else {
+      Game.lives=0; Game.state='over'; AudioEngine.stopMusic();
+    }
+  },900);
+}
+function spawnItemFn(){} // defined in stage 3
+function spawnFloatFn(){} // stage 3
+function spawnMouseFn(level,tx,ty){ // stage 4: a packet of mice bursts out of the hatch
+  const n=2+((Math.random()*2)|0);
+  for(let i=0;i<n;i++){
+    const m=makeEnemy('mouse',tx*TILE-10+i*13,ty*TILE+6,{facing:i%2===0?1:-1});
+    m.vy=-6+i;
+    level.enemies.push(m);
+  }
+  AudioEngine.sfx('chatter');
+}
+function hurtPlayerFn(p,dmg){
+  if(p.invuln>0||p.surge>0) return;
+  if(p.shield){ p.shield=false; p.invuln=60; AudioEngine.sfx('shield'); return; }
+  if(Game.power>0){ Game.power--; AudioEngine.sfx('hurt'); p.invuln=90; }
+  else { killPlayerFn(p,'hit'); }
+}
+
+// boot
+function boot(){
+  Input.init();
+  scaleCanvas();
+  Game.state='title';
+  requestAnimationFrame(frame);
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot);
+else boot();
+</script>
+</body>
+</html>
