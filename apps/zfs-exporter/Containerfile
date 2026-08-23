@@ -7,7 +7,7 @@ ARG UBI_IMAGE_MINIMAL=registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256
 FROM ${UBI_IMAGE_MINIMAL} AS fetch
 
 # renovate: datasource=github-releases depName=pdf/zfs_exporter
-ARG ZFS_EXPORTER_VERSION="v2.3.12"
+ARG ZFS_EXPORTER_VERSION="v2.4.1"
 ARG TARGETARCH
 
 RUN microdnf install -y --setopt=install_weak_deps=0 --nodocs tar gzip \
