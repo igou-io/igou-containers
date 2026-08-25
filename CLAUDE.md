@@ -81,6 +81,8 @@ Hardened UBI10-based container for running [opencode](https://opencode.ai) again
 
 No baked sandbox config (opencode has no equivalent of Claude's `settings.json` or Cursor's `sandbox.json`), so the entrypoint is a minimal git/GitHub PAT setup with no merge step. The opencode config lives in `~/.config/opencode/opencode.jsonc` on the host and is bind-mounted into the container by the `opencode-run` launcher in `igou-devenv/bin/`.
 
+This image is also run in **`opencode serve` mode** by the t3 credential-injecting provider (`igou-devenv/.devcontainer/opencode-sandbox-launch`, igou-devenv adr/0005): a hardened `podman run … opencode serve --hostname=127.0.0.1 --port=NNNN` that t3 connects to. For that path the entrypoint redirects all its setup output to stderr, because t3 parses the server's stdout for the `opencode server listening on <url>` ready line — nothing but opencode's own output may reach stdout. Keep `OPENCODE_VERSION` in step with igou-devenv's `OPENCODE_VERSION` Dockerfile ARG so the containerized provider matches the default opencode t3 talks to.
+
 **Dependencies managed by Renovate:**
 - `requirements.txt` — Python packages (pip_requirements manager)
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
