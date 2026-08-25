@@ -81,24 +81,12 @@ Hardened UBI10-based container for running [opencode](https://opencode.ai) again
 
 No baked sandbox config (opencode has no equivalent of Claude's `settings.json` or Cursor's `sandbox.json`), so the entrypoint is a minimal git/GitHub PAT setup with no merge step. The opencode config lives in `~/.config/opencode/opencode.jsonc` on the host and is bind-mounted into the container by the `opencode-run` launcher in `igou-devenv/bin/`.
 
+This image is also run in **`opencode serve` mode** by the t3 credential-injecting provider (`igou-devenv/.devcontainer/opencode-sandbox-launch`, igou-devenv adr/0005): a hardened `podman run … opencode serve --hostname=127.0.0.1 --port=NNNN` that t3 connects to. For that path the entrypoint redirects all its setup output to stderr, because t3 parses the server's stdout for the `opencode server listening on <url>` ready line — nothing but opencode's own output may reach stdout. Keep `OPENCODE_VERSION` in step with igou-devenv's `OPENCODE_VERSION` Dockerfile ARG so the containerized provider matches the default opencode t3 talks to.
+
 **Dependencies managed by Renovate:**
 - `requirements.txt` — Python packages (pip_requirements manager)
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
 - `FROM` lines — UBI base image digests (dockerfile manager)
-
-### opencode-dev
-
-Unhardened sibling of the `opencode` image. Identical build pattern, but two intentional differences from the hardened variant:
-
-- `pip`/`pip3`/ensurepip are **not** removed — the agent can `pip install --user <pkg>` at runtime.
-- [uv](https://github.com/astral-sh/uv) is baked in at `/usr/local/bin/uv` (copied from `ghcr.io/astral-sh/uv:<version>` via the dockerfile manager — Renovate updates the tag automatically).
-
-Use this image when you need the agent to install ad-hoc Python packages mid-task. Launch via `opencode-run --dev` (which sets `IMAGE=ghcr.io/igou-io/opencode-dev:latest`) or `opencode-run --image ghcr.io/igou-io/opencode-dev:latest`. Runtime hardening (cap-drop, noexec /tmp, resource limits) is unchanged — only the image-level package-manager removal is reverted. The image's `TMPDIR` is set to `/home/igou/.cache` so pip and uv can use an exec-able scratch dir.
-
-**Dependencies managed by Renovate:**
-- `requirements.txt` — Python packages (pip_requirements manager)
-- `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
-- `FROM` and `COPY --from=` lines — base images and uv tag (dockerfile manager)
 
 ### cursor-agent-cli
 
