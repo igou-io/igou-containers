@@ -9,7 +9,7 @@
 # source, npm, playwright, ffmpeg, uv sync, web build).
 ARG HERMES_IMAGE=docker.io/nousresearch/hermes-agent:v2026.8.13@sha256:68e15ae2a6d894d0ccbd9f8aacbbe13d4d28fa5dc9b6a303970b67bb2499b1a6
 
-FROM registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:07ab7c0a596785afa1de1963c1cac07f2b9df2e762b9d20d3433cff18ac1af18 AS source
+FROM registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:d28951a21182cbc821da281af307a4d583dbc39d464680adc6fdffbc5a935b20 AS source
 
 # renovate: datasource=git-refs depName=https://github.com/david-igou/hermes-agent branch=feat/kubernetes-terminal-backend
 ARG HERMES_FORK_REF=e3c04ed4fd1434c5f5c4f5cbab1eaf46f49f6b65
