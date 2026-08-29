@@ -1,0 +1,8 @@
+ansible==14.3.0
+ansible-runner==2.4.3
+ansible-lint==26.8.0
+ansible-creator==26.8.0
+molecule==26.8.0
+yq==4.1.2
+kubernetes==36.0.3
+jmespath==1.1.0
