@@ -8,3 +8,5 @@ kubernetes==36.0.3
 jmespath==1.1.0
 # RouterOS API client for the read-only routeros-ro profile (igou-devenv ADR-0006)
 librouteros==3.4.1
+# TrueNAS JSON-RPC WebSocket client for the read-only truenas-ro profile (igou-devenv ADR-0006)
+websockets==15.0.1
