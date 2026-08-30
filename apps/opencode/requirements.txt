@@ -1,4 +1,4 @@
-ansible==14.3.0
+ansible==14.3.1
 ansible-runner==2.4.3
 ansible-lint==26.8.0
 ansible-creator==26.8.0
@@ -7,6 +7,6 @@ yq==4.1.2
 kubernetes==36.0.3
 jmespath==1.1.0
 # RouterOS API client for the read-only routeros-ro profile (igou-devenv ADR-0006)
-librouteros==3.4.1
+librouteros==4.2.0
 # TrueNAS JSON-RPC WebSocket client for the read-only truenas-ro profile (igou-devenv ADR-0006)
-websockets==15.0.1
+websockets==17.0.1
