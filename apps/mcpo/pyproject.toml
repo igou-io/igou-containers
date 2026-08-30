@@ -6,6 +6,6 @@ requires-python = ">=3.12"
 dependencies = [
     "mcpo==0.0.20",
     "kubernetes-mcp-server==0.0.66",
-    "mcp-server-time==2026.7.10",
+    "mcp-server-time==2026.8.18",
     "mcp-server-git==2026.8.18"
 ]
