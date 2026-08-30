@@ -23,7 +23,7 @@ WORKDIR /app
 
 RUN dnf install -y ${PACKAGES}
 
-RUN --mount=from=ghcr.io/astral-sh/uv@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1,source=/uv,target=/bin/uv \
+RUN --mount=from=ghcr.io/astral-sh/uv@sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945,source=/uv,target=/bin/uv \
 --mount=type=cache,target=/root/.cache/uv \
 --mount=type=bind,source=uv.lock,target=uv.lock \
 --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
