@@ -1,6 +1,6 @@
 # Fangche (RV) Runner - single-file canvas game, served as static content.
 # Same pattern as apps/rigrunner: nginx-unprivileged listens on 8080 as a
 # non-root user, no s2i toolchain needed for a single static file.
-FROM docker.io/nginxinc/nginx-unprivileged:stable-alpine@sha256:93722936b82ec8a1178d48448e619226680d2de3706a1640800e186cd5fa7fd3
+FROM docker.io/nginxinc/nginx-unprivileged:stable-alpine@sha256:9b87ad3dd9f431c733f19dfb278c7eb3dba9dca381942c79818bb42f1a566a83
 
 COPY index.html /usr/share/nginx/html/index.html
