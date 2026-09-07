@@ -31,7 +31,7 @@ RUN microdnf install -y --setopt=install_weak_deps=0 --nodocs tar gzip \
 FROM ${UBI_IMAGE} AS rpms
 
 # renovate: datasource=github-releases depName=openzfs/zfs extractVersion=^zfs-(?<version>.*)$
-ARG ZFS_VERSION="2.3.8"
+ARG ZFS_VERSION="2.3.9"
 
 RUN dnf install -y dnf-plugins-core \
     && rpm -ivh https://zfsonlinux.org/epel/zfs-release-2-8.el10.noarch.rpm \
