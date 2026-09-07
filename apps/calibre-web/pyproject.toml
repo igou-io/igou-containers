@@ -6,3 +6,11 @@ requires-python = ">=3.12"
 dependencies = [
     "calibreweb[kobo,metadata]==0.6.27",
 ]
+
+# Calibre-Web 0.6.27 caps cryptography below 48, but 47.0.0 carries three
+# high-severity advisories. Override only that transitive cap to the first
+# patched release; remove this when upstream widens its constraint.
+[tool.uv]
+override-dependencies = [
+    "cryptography==48.0.1",
+]
