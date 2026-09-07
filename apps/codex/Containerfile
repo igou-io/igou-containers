@@ -61,13 +61,13 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/usr/local/bin
 # ---------------------------------------------------------------------------
 
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION="v1.36.4"
+ARG KUBECTL_VERSION="v1.37.0"
 # renovate: datasource=github-releases depName=helm/helm
 ARG HELM_VERSION="v4.2.4"
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION="v2.97.0"
+ARG GH_VERSION="v2.98.0"
 # renovate: datasource=github-releases depName=argoproj/argo-cd
-ARG ARGOCD_VERSION="v3.5.1"
+ARG ARGOCD_VERSION="v3.5.2"
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.*)$
 ARG KUSTOMIZE_VERSION="v5.8.1"
 # renovate: datasource=github-releases depName=kubevirt/kubevirt
@@ -171,9 +171,9 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/workspace && \
 FROM ${UBI_IMAGE} AS codex-build
 
 # renovate: datasource=github-releases depName=openai/codex extractVersion=^rust-v(?<version>.+)$
-ARG CODEX_VERSION="0.149.1"
-ARG CODEX_SHA256_X64="1e8531ae5f6dea3c6e11e53e74cc5ac81bf1ba597f9b296fb112d6ea30fdaf5d"
-ARG CODEX_SHA256_ARM64="57095f9f4ced36d8e173f67e26c5c142d5b3e1e1984bbcae35684209ed236a9b"
+ARG CODEX_VERSION="0.150.1"
+ARG CODEX_SHA256_X64="00aba704f029f6dc0d948be407a756e0c97cc840132fd691353b2c6b0a505b17"
+ARG CODEX_SHA256_ARM64="1ecac3f87823efb98153233b076ea3d6e34a7a8cebe43c5285dc5f79e1514639"
 
 RUN dnf install -y curl tar gzip && \
     groupadd -g 1000 igou 2>/dev/null || true && \
