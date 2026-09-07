@@ -1,0 +1,23 @@
+# calibre-web — OpenShift-compatible Calibre-Web image for the ebook library service
+#
+# Fleet-image conventions (igou-containers AGENTS.md):
+# - UBI base; pin FROM by digest once merged (Renovate manages digests;
+#   UBI updates ship immediately, everything else weekly automerge).
+# - Multi-stage; final image runs as a non-root arbitrary UID.
+# - Can't build all default platforms? Add an apps/<app>/PLATFORMS file.
+# - CI builds this dir automatically on the next push that touches it;
+#   images land at ghcr.io/igou-io/calibre-web.
+
+FROM registry.access.redhat.com/ubi10/ubi-minimal AS build
+
+# Build stage: fetch/compile your artifact here.
+WORKDIR /src
+# RUN microdnf install -y <toolchain> && microdnf clean all
+
+FROM registry.access.redhat.com/ubi10/ubi-minimal
+
+# COPY --from=build /src/out /usr/local/bin/calibre-web
+USER 1001
+# EXPOSE 8080
+# ENTRYPOINT ["/usr/local/bin/calibre-web"]
+CMD ["/bin/sh", "-c", "echo 'replace this starter CMD' && sleep infinity"]
