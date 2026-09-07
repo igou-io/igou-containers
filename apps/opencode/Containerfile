@@ -61,13 +61,13 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/usr/local/bin
 # ---------------------------------------------------------------------------
 
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION="v1.36.4"
+ARG KUBECTL_VERSION="v1.37.0"
 # renovate: datasource=github-releases depName=helm/helm
 ARG HELM_VERSION="v4.2.4"
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION="v2.97.0"
+ARG GH_VERSION="v2.98.0"
 # renovate: datasource=github-releases depName=argoproj/argo-cd
-ARG ARGOCD_VERSION="v3.5.1"
+ARG ARGOCD_VERSION="v3.5.2"
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.*)$
 ARG KUSTOMIZE_VERSION="v5.8.1"
 # renovate: datasource=github-releases depName=kubevirt/kubevirt
@@ -169,7 +169,7 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/workspace && \
 FROM ${UBI_IMAGE} AS opencode-build
 
 # renovate: datasource=github-releases depName=anomalyco/opencode extractVersion=^v(?<version>.*)$
-ARG OPENCODE_VERSION="1.18.19"
+ARG OPENCODE_VERSION="1.18.24"
 
 RUN dnf install -y curl tar gzip && \
     groupadd -g 1000 igou 2>/dev/null || true && \
