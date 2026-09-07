@@ -21,6 +21,18 @@ Apps that can't build for all default platforms declare their own in an `apps/<a
 
 ## Current Apps
 
+### calibre-web
+
+OpenShift-compatible Calibre-Web image built from the pinned PyPI release on
+UBI 10. The final scratch image runs as non-root and supports OpenShift's
+arbitrary UID with GID 0. `/config` holds application state and `/books` holds
+the external Calibre library; the entrypoint seeds the upstream starter
+`metadata.db` only when the library is empty. Conversion binaries are omitted.
+
+**Dependencies managed by Renovate:**
+- `pyproject.toml` / `uv.lock` — Calibre-Web and Python dependencies
+- `FROM` lines — UBI base image digests
+
 ### adb-exporter
 
 From-source build of [adb-exporter](https://github.com/david-igou/adb-exporter), a Prometheus exporter for Android devices scraped over the `adb` CLI. UBI 9 based — the runtime needs the `adb` binary, and EPEL packages `android-tools` only for el9 (not el10). Three-stage build:

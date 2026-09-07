@@ -1,23 +1,61 @@
-# calibre-web — OpenShift-compatible Calibre-Web image for the ebook library service
-#
-# Fleet-image conventions (igou-containers AGENTS.md):
-# - UBI base; pin FROM by digest once merged (Renovate manages digests;
-#   UBI updates ship immediately, everything else weekly automerge).
-# - Multi-stage; final image runs as a non-root arbitrary UID.
-# - Can't build all default platforms? Add an apps/<app>/PLATFORMS file.
-# - CI builds this dir automatically on the next push that touches it;
-#   images land at ghcr.io/igou-io/calibre-web.
+ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:10.2-1788218897@sha256:4690398669a07627339936c9e79b05233053056ce688efeb4400d3c1c530486b
+ARG UBI_IMAGE_MICRO=registry.access.redhat.com/ubi10/ubi-micro:10.2-1787684489@sha256:37fadb004c6bea628fcdd81376c8fb77bd8d9fd432d90503af4d9e76b1ff7191
 
-FROM registry.access.redhat.com/ubi10/ubi-minimal AS build
+FROM ${UBI_IMAGE_MICRO} AS target
 
-# Build stage: fetch/compile your artifact here.
-WORKDIR /src
-# RUN microdnf install -y <toolchain> && microdnf clean all
+FROM ${UBI_IMAGE} AS build
 
-FROM registry.access.redhat.com/ubi10/ubi-minimal
+ARG DNF_INSTALL_ROOT=/mnt/rootfs
+ARG DNF_OPTS="--setopt install_weak_deps=false --nodocs"
+ARG RUNTIME_PACKAGES="file-libs python3.12 shadow-utils tzdata"
 
-# COPY --from=build /src/out /usr/local/bin/calibre-web
+RUN mkdir -p ${DNF_INSTALL_ROOT}
+COPY --from=target / ${DNF_INSTALL_ROOT}/
+
+RUN dnf -y --installroot ${DNF_INSTALL_ROOT} ${DNF_OPTS} install ${RUNTIME_PACKAGES} && \
+    dnf --installroot ${DNF_INSTALL_ROOT} clean all && \
+    rm -rf ${DNF_INSTALL_ROOT}/var/cache/* ${DNF_INSTALL_ROOT}/var/log/dnf* ${DNF_INSTALL_ROOT}/var/log/yum.*
+
+RUN dnf -y ${DNF_OPTS} install python3.12 && dnf clean all
+
+WORKDIR /app
+
+RUN --mount=from=ghcr.io/astral-sh/uv@sha256:2bb3ebca0a796a155094a27773d290c4b074572e6107f171d88d086682fd2500,source=/uv,target=/bin/uv \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-editable --no-dev
+
+# Upstream documents this database as the bootstrap for a new library. Keep
+# the version and digest explicit so a compromised or retagged download fails
+# the image build instead of silently seeding persistent storage.
+ARG CALIBRE_WEB_VERSION=0.6.27
+ARG CALIBRE_METADATA_SHA256=fac2f7e37ef4bc0fb2955e9a3f612604707d4ef573af5c28bd7a8369339f4bd4
+RUN curl --fail --location --silent --show-error \
+      --output /app/metadata.db \
+      "https://raw.githubusercontent.com/janeczku/calibre-web/${CALIBRE_WEB_VERSION}/library/metadata.db" && \
+    echo "${CALIBRE_METADATA_SHA256}  /app/metadata.db" | sha256sum --check
+
+COPY entrypoint.py /app/entrypoint.py
+
+# OpenShift supplies an arbitrary UID with GID 0. Group-write permission lets
+# that UID use the baked application tree while persistent writes stay on the
+# mounted /config and /books volumes.
+RUN mkdir -p ${DNF_INSTALL_ROOT}/config ${DNF_INSTALL_ROOT}/books && \
+    chown -R 1001:0 /app ${DNF_INSTALL_ROOT}/config ${DNF_INSTALL_ROOT}/books && \
+    chmod -R g=u /app ${DNF_INSTALL_ROOT}/config ${DNF_INSTALL_ROOT}/books
+
+FROM scratch
+
+ARG DNF_INSTALL_ROOT=/mnt/rootfs
+
+COPY --from=build ${DNF_INSTALL_ROOT}/ /
+COPY --from=build /app /app
+
+ENV HOME=/config \
+    PATH=/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin \
+    XDG_CACHE_HOME=/config/.cache
+
 USER 1001
-# EXPOSE 8080
-# ENTRYPOINT ["/usr/local/bin/calibre-web"]
-CMD ["/bin/sh", "-c", "echo 'replace this starter CMD' && sleep infinity"]
+EXPOSE 8083
+ENTRYPOINT ["/app/.venv/bin/python", "/app/entrypoint.py"]

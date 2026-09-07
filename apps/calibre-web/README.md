@@ -1,16 +1,20 @@
 # calibre-web
 
-OpenShift-compatible Calibre-Web image for the ebook library service
+OpenShift-compatible image for [Calibre-Web](https://github.com/janeczku/calibre-web).
 
-Scaffolded by the container-image golden path into `apps/calibre-web/`.
+The image installs the pinned Python application and starts through a
+shell-independent entrypoint as a non-root, arbitrary UID-compatible process.
+Runtime state belongs on two volumes:
 
-- **Build**: CI (`build-containers.yml`) auto-detects changes to this
-  directory; PRs build without pushing, merges to `main` push
-  `ghcr.io/igou-io/calibre-web` (`latest`, date, SHA, branch tags)
-  with provenance attestation and SBOM.
-- **Platforms**: linux/amd64 + linux/arm64 by default; restrict with a
-  `PLATFORMS` file in this directory if needed.
-- **Renovate**: pins `FROM` digests after merge; add `# renovate:` ARG
-  annotations for upstream release tags you want tracked.
-- **Document the image** in the repo-root `AGENTS.md` "Current Apps"
-  section (build pattern, runtime notes) — see existing entries.
+- `/config` stores Calibre-Web's `app.db`, logs, and cache.
+- `/books` stores the Calibre library, including `metadata.db` and ebooks.
+
+On first start, the entrypoint copies the upstream starter `metadata.db` into
+an empty writable `/books` volume. It never replaces an existing database.
+
+The container listens on port 8083 and starts Calibre-Web with
+`cps -p /config/app.db`. Calibre conversion binaries are intentionally absent;
+add them only if the deployment needs format conversion.
+
+CI builds `linux/amd64` and `linux/arm64` images and publishes
+`ghcr.io/igou-io/calibre-web` after merge.
