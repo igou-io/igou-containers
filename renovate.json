@@ -19,7 +19,14 @@
     {
       "description": "Track the OpenZFS 2.3 line — must match the TrueNAS 25.10 host kmod (zfs-exporter)",
       "matchDepNames": ["openzfs/zfs"],
+      "groupName": "zfs-exporter dependencies",
       "allowedVersions": "<2.4.0"
+    },
+    {
+      "description": "Codex releases require matching per-architecture SHA256 pins; keep them isolated for checksum recapture before merge",
+      "matchDepNames": ["openai/codex"],
+      "groupName": "codex cli",
+      "automerge": false
     },
     {
       "matchManagers": ["github-actions"],
