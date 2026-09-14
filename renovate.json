@@ -23,7 +23,7 @@
       "allowedVersions": "<2.4.0"
     },
     {
-      "description": "Codex releases require matching per-architecture SHA256 pins; keep them isolated for checksum recapture before merge",
+      "description": "Codex releases require matching per-architecture SHA256 pins; run .github/recapture-codex-sha.sh after a version bump before merging",
       "matchDepNames": ["openai/codex"],
       "groupName": "codex cli",
       "automerge": false
