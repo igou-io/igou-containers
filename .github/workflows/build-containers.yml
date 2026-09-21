@@ -48,6 +48,9 @@ jobs:
     outputs:
       apps: ${{ steps.apps.outputs.apps }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - name: Get Apps
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         id: apps
@@ -55,8 +58,12 @@ jobs:
           APPS: ${{ github.event_name == 'workflow_dispatch' && inputs.app || join(fromJSON(needs.prepare.outputs.changed-files), ' ') }}
         with:
           script: |-
+            const fs = require('fs');
             const { APPS } = process.env;
-            const appsToBuild = APPS.split(' ').filter(Boolean);
+            const appsToBuild = APPS
+              .split(' ')
+              .filter(Boolean)
+              .filter((app) => fs.existsSync(`apps/${app}/Containerfile`));
             core.setOutput('apps', JSON.stringify(appsToBuild));
             console.log('apps:', JSON.stringify(appsToBuild, null, 2));
             core.summary.addHeading('Apps to build:').addList(appsToBuild).write();
