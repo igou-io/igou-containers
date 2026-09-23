@@ -1,5 +1,5 @@
 ARG ACP_SOURCE_REV=9d7246cb467b3e4d4060bff760b6256f6a368a50
-ARG GO_TOOLSET_IMAGE=registry.access.redhat.com/ubi9/go-toolset@sha256:90a36bc2013b3fcb28e2a4b082c9b895d7c2c679e58b95aed9721970f3339d0e
+ARG GO_TOOLSET_IMAGE=registry.access.redhat.com/ubi9/go-toolset@sha256:15c3098dc4639e8a0e6a1bc77b50964513a1d76dccae4b07b9808101c5addd04
 ARG ACP_CONTROL_PLANE_IMAGE=quay.io/ambient_code/acp_control_plane@sha256:bb4819e8a249522546018f0783f7bc1a7f56c5a5b930a9c1c38dedc1dda8170a
 
 FROM ${GO_TOOLSET_IMAGE} AS builder
