@@ -1,0 +1,22 @@
+ARG ACP_RUNNER_IMAGE=quay.io/ambient_code/acp_runner_openshell@sha256:e06ff48b93d4ac47793a80d1be8502a42346ff2cd37f1b2d318738740c7c470f
+ARG CODEX_IMAGE=ghcr.io/igou-io/codex@sha256:daaf5886a5701764bef919f04ac89b65d6959baf14e81dbf98c5e19cbf5f0f17
+
+FROM ${CODEX_IMAGE} AS codex
+FROM ${ACP_RUNNER_IMAGE}
+
+COPY --from=codex /home/igou/.local/share/codex /opt/codex
+RUN ln -s "$(find /opt/codex -path '*/bin/codex' -type f -print -quit)" /usr/local/bin/codex \
+    && mkdir -p /sandbox/.codex \
+    && chgrp -R 0 /sandbox/.codex \
+    && chmod -R g=u /sandbox/.codex
+
+COPY main.py codex_bridge.py /runner/ambient-runner/
+
+ENV CODEX_HOME=/sandbox/.codex \
+    RUNNER_TYPE=codex \
+    CODEX_MODEL_PROVIDER=opencode_go \
+    CODEX_BASE_URL=https://opencode.ai/zen/go/v1 \
+    CODEX_MODEL=gpt-5.6-luna
+
+WORKDIR /sandbox
+CMD ["/runner/entrypoint.sh"]
