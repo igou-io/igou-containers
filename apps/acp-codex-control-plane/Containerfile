@@ -1,0 +1,23 @@
+ARG ACP_SOURCE_REV=9d7246cb467b3e4d4060bff760b6256f6a368a50
+ARG GO_TOOLSET_IMAGE=registry.access.redhat.com/ubi9/go-toolset@sha256:90a36bc2013b3fcb28e2a4b082c9b895d7c2c679e58b95aed9721970f3339d0e
+ARG ACP_CONTROL_PLANE_IMAGE=quay.io/ambient_code/acp_control_plane@sha256:bb4819e8a249522546018f0783f7bc1a7f56c5a5b930a9c1c38dedc1dda8170a
+
+FROM ${GO_TOOLSET_IMAGE} AS builder
+ARG ACP_SOURCE_REV
+USER root
+RUN git init /workspace/acp \
+    && cd /workspace/acp \
+    && git remote add origin https://github.com/openshift-online/agent-control-plane.git \
+    && git fetch --depth 1 origin "${ACP_SOURCE_REV}" \
+    && git checkout --detach FETCH_HEAD \
+    && test "$(git rev-parse HEAD)" = "${ACP_SOURCE_REV}"
+
+COPY opencode_provider.go opencode_provider_test.go /workspace/acp/components/ambient-control-plane/internal/openshell/
+WORKDIR /workspace/acp/components/ambient-control-plane
+RUN go test ./internal/openshell -run '^TestOpenCodeProviderMapping$' \
+    && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /workspace/ambient-control-plane ./cmd/ambient-control-plane
+
+FROM ${ACP_CONTROL_PLANE_IMAGE}
+COPY --from=builder /workspace/ambient-control-plane /usr/local/bin/ambient-control-plane
+
+LABEL org.opencontainers.image.description="ACP control plane with OpenCode Go provider profile mapping"
