@@ -25,6 +25,11 @@ from ag_ui_gemini_cli.utils import extract_user_message
 logger = logging.getLogger(__name__)
 
 
+async def _drain_stderr(stream: asyncio.StreamReader) -> None:
+    while await stream.read(65536):
+        pass
+
+
 class CodexBridge(PlatformBridge):
     def __init__(self) -> None:
         super().__init__()
@@ -38,7 +43,7 @@ class CodexBridge(PlatformBridge):
     def capabilities(self) -> FrameworkCapabilities:
         return FrameworkCapabilities(
             framework="codex",
-            agent_features=["agentic_chat", "backend_tool_rendering"],
+            agent_features=["agentic_chat"],
             file_system=True,
             session_persistence=True,
         )
@@ -107,7 +112,7 @@ class CodexBridge(PlatformBridge):
                 *command, cwd=workspace, stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stderr_task = asyncio.create_task(self._process.stderr.read())
+            stderr_task = asyncio.create_task(_drain_stderr(self._process.stderr))
             message_count = 0
             failed = False
             try:
