@@ -171,7 +171,7 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/workspace && \
 FROM ${UBI_IMAGE} AS codex-build
 
 # renovate: datasource=github-releases depName=openai/codex extractVersion=^rust-v(?<version>.+)$
-ARG CODEX_VERSION="0.153.2"
+ARG CODEX_VERSION="0.154.0"
 ARG CODEX_SHA256_X64="e10fa0cee78e9f0bd395880f03fd4fd227d903ca7af649bbc08d1649101e9225"
 ARG CODEX_SHA256_ARM64="a3bfaf4b62fcb17e0a0338dfe0502413ddce0ab1b39028679390539c45d2c6e3"
 
