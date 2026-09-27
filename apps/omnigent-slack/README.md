@@ -1,8 +1,16 @@
 # omnigent-slack
 
-The unmodified Omnigent v0.15.0 Slack integration, layered onto the pinned
-upstream server image. The server image lacks the optional Slack package; the
-source archive is pinned by SHA-256 in `Containerfile`.
+The unmodified Omnigent Slack integration, layered onto the pinned upstream
+server image. The server image lacks the optional Slack package; the source
+archive is pinned by SHA-256 in `Containerfile`.
+
+Renovate tracks the versioned upstream base image and its digest through the
+Dockerfile manager. Its version argument also selects the matching Slack source
+archive. The seven direct Python requirements are pinned in `requirements.txt`
+and tracked by Renovate's pip requirements manager. Updates for this image do
+not automerge: when the upstream version changes, refresh the `ADD --checksum`
+value from the new archive, then verify the image build and runtime imports.
+The build checks that the installed Slack and server package versions match.
 
 Build locally from the repository root:
 

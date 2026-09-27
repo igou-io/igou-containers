@@ -1,13 +1,20 @@
-FROM ghcr.io/omnigent-ai/omnigent-server-kubernetes@sha256:ed3ae35d30572dcd929ba4e1edefdcec53ef178ab2f8147d11a8f2f33dded123
+ARG OMNIGENT_VERSION=v0.15.0
+FROM ghcr.io/omnigent-ai/omnigent-server-kubernetes:${OMNIGENT_VERSION}@sha256:ed3ae35d30572dcd929ba4e1edefdcec53ef178ab2f8147d11a8f2f33dded123
+ARG OMNIGENT_VERSION
 
-# v0.15.0 publishes the integration source but not a matching PyPI package.
+# Renovate tracks the image tag/digest; the same tag selects the Slack source.
+# Refresh this checksum when the upstream tag changes.
+COPY requirements.txt /tmp/requirements.txt
 ADD --checksum=sha256:b60890516bea9d65ec54599e58e086ecb20862f24a409000ebc64d6152047d6e \
-    https://codeload.github.com/omnigent-ai/omnigent/tar.gz/refs/tags/v0.15.0 \
-    /tmp/omnigent-v0.15.0.tar.gz
+    https://codeload.github.com/omnigent-ai/omnigent/tar.gz/refs/tags/${OMNIGENT_VERSION} \
+    /tmp/omnigent.tar.gz
 
-RUN tar -xzf /tmp/omnigent-v0.15.0.tar.gz -C /tmp \
- && /opt/venv/bin/pip install --no-cache-dir /tmp/omnigent-0.15.0/integrations/slack \
- && /opt/venv/bin/python -c 'import omnigent_slack, slack_bolt' \
- && rm -rf /tmp/omnigent-0.15.0 /tmp/omnigent-v0.15.0.tar.gz
+RUN mkdir /tmp/omnigent-source \
+ && tar -xzf /tmp/omnigent.tar.gz -C /tmp/omnigent-source --strip-components=1 \
+ && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
+ && /opt/venv/bin/pip install --no-cache-dir --no-deps /tmp/omnigent-source/integrations/slack \
+ && /opt/venv/bin/pip check \
+ && /opt/venv/bin/python -c 'from importlib.metadata import version; import omnigent_slack, slack_bolt; assert version("omnigent-slack") == version("omnigent")' \
+ && rm -rf /tmp/omnigent-source /tmp/omnigent.tar.gz /tmp/requirements.txt
 
 CMD ["omni", "integration", "slack"]

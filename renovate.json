@@ -43,6 +43,12 @@
     {
       "matchManagers": ["npm"],
       "groupName": "npm dependencies"
+    },
+    {
+      "description": "Review Omnigent base/source updates together and refresh the verified source archive checksum",
+      "matchFileNames": ["apps/omnigent-slack/**"],
+      "groupName": "omnigent Slack dependencies",
+      "automerge": false
     }
   ],
   "customManagers": [
