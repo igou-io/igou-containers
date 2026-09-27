@@ -1,5 +1,5 @@
 ARG ACP_RUNNER_IMAGE=quay.io/ambient_code/acp_runner_openshell@sha256:e06ff48b93d4ac47793a80d1be8502a42346ff2cd37f1b2d318738740c7c470f
-ARG CODEX_IMAGE=ghcr.io/igou-io/codex@sha256:daaf5886a5701764bef919f04ac89b65d6959baf14e81dbf98c5e19cbf5f0f17
+ARG CODEX_IMAGE=ghcr.io/igou-io/codex@sha256:c190051a4d073af4640f8a3680e74f20d467710737d2916e17f5d21101b6daa6
 
 FROM ${CODEX_IMAGE} AS codex
 FROM ${ACP_RUNNER_IMAGE}
