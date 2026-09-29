@@ -1,8 +1,16 @@
 # omnigent-slack
 
-The unmodified Omnigent Slack integration, layered onto the pinned upstream
-server image. The server image lacks the optional Slack package; the source
-archive is pinned by SHA-256 in `Containerfile`.
+The Omnigent Slack integration, layered onto the pinned upstream server image.
+The server image lacks the optional Slack package; the source archive is pinned
+by SHA-256 in `Containerfile`.
+
+`apply-native-turn-fix.py` patches the pinned Slack client before installation.
+For a managed `opencode-native` session, the native harness reports completion
+when it hands the prompt to OpenCode, before OpenCode has answered. The patch
+keeps Slack listening past that early ID-less idle and ends on the forwarder's
+ID-bearing terminal status. The build runs `test-native-turn.py` to check this
+sequence and the in-process harness's ID-less completion. The patch fails the
+build if its source anchors change; review it when updating Omnigent.
 
 Renovate tracks the versioned upstream base image and its digest through the
 Dockerfile manager. Its version argument also selects the matching Slack source
