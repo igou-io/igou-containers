@@ -2,6 +2,6 @@
 # nginx-unprivileged listens on 8080 and runs as a non-root user out of the
 # box, which satisfies the arbitrary-UID convention without an s2i toolchain
 # (there is no UBI static-file image that avoids one).
-FROM docker.io/nginxinc/nginx-unprivileged:stable-alpine@sha256:4714e0b1b2577eaa1a6131d07c958b67f0eb68e6d0521e90c6e5287db8cf0bc5
+FROM docker.io/nginxinc/nginx-unprivileged:stable-alpine@sha256:ed04ec1ff34502c339ee5c3ae3f855442398edc1d05591e2b98981dcbbd20b1e
 
 COPY index.html /usr/share/nginx/html/index.html
