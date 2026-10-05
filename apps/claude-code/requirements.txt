@@ -1,9 +1,9 @@
 ansible==14.4.0
 ansible-runner==2.4.3
-ansible-lint==26.8.0
-ansible-creator==26.8.0
-molecule==26.8.0
-yq==4.1.2
+ansible-lint==26.9.0
+ansible-creator==26.9.0
+molecule==26.9.0
+yq==4.2.0
 kubernetes==36.0.3
 jmespath==1.1.0
 # RouterOS API client for the read-only routeros-ro profile (igou-devenv ADR-0006)
