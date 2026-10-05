@@ -172,8 +172,8 @@ FROM ${UBI_IMAGE} AS codex-build
 
 # renovate: datasource=github-releases depName=openai/codex extractVersion=^rust-v(?<version>.+)$
 ARG CODEX_VERSION="0.157.0"
-ARG CODEX_SHA256_X64="e10fa0cee78e9f0bd395880f03fd4fd227d903ca7af649bbc08d1649101e9225"
-ARG CODEX_SHA256_ARM64="a3bfaf4b62fcb17e0a0338dfe0502413ddce0ab1b39028679390539c45d2c6e3"
+ARG CODEX_SHA256_X64="042f851ea3fc1083c45157520520944fc790632b53ebc580fc98eaca55862a25"
+ARG CODEX_SHA256_ARM64="c1c36beab0b4f72779adf53ba9e9e494bf7cbfbe4f3506a08ff67a24f5f00d08"
 
 RUN dnf install -y curl tar gzip && \
     groupadd -g 1000 igou 2>/dev/null || true && \
