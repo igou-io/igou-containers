@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -401,11 +401,11 @@ wheels = [
 
 [[package]]
 name = "kubernetes-mcp-server"
-version = "0.0.66"
+version = "0.0.67"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/16/b9/0f2678ed536344349f8460ade8d76f485696e37eda4202b96a2a67e2e993/kubernetes_mcp_server-0.0.66.tar.gz", hash = "sha256:8e47d3c199eeaa357b1f3624a919b4bee98831aa26f1fc79534674c97478bdd0", size = 55329, upload-time = "2026-07-31T14:07:45.224Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/26/43bc62582e635d8f28d61bdc41ed80091b2bd89c5d38009e10aaa9685496/kubernetes_mcp_server-0.0.67.tar.gz", hash = "sha256:34ee673805ade285a89c30470d7c3949c47d6b25e0d1bfc3e0cc4596da18026b", size = 56606, upload-time = "2026-09-18T13:49:49.111Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/95/a9f17ec89980de49f53839a229bcc48570eccf2f328af0f43980289d01dd/kubernetes_mcp_server-0.0.66-py3-none-any.whl", hash = "sha256:34a5f952060620e7ed7382e93260d1454e92c1e56f520667fef76c7c268d9e22", size = 21387, upload-time = "2026-07-31T14:07:43.935Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/61/5dfcfb08ff7a99dfcfa7c4754145626a1757bc7aa5f355abb63ed3818375/kubernetes_mcp_server-0.0.67-py3-none-any.whl", hash = "sha256:1ab8a31e1aa3ed3891fb7c5e76d1881f427318b20e1271a560ecad3a1e5b98ae", size = 21793, upload-time = "2026-09-18T13:49:47.962Z" },
 ]
 
 [[package]]
@@ -515,7 +515,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "kubernetes-mcp-server", specifier = "==0.0.66" },
+    { name = "kubernetes-mcp-server", specifier = "==0.0.67" },
     { name = "mcp-server-git", specifier = "==2026.8.18" },
     { name = "mcp-server-time", specifier = "==2026.8.18" },
     { name = "mcpo", specifier = "==0.0.20" },
