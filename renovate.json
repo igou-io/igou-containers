@@ -5,61 +5,140 @@
   ],
   "packageRules": [
     {
-      "matchManagers": ["pip_requirements"],
+      "matchManagers": [
+        "pip-compile"
+      ],
       "groupName": "python dependencies"
     },
     {
-      "matchManagers": ["dockerfile"],
+      "matchManagers": [
+        "dockerfile"
+      ],
       "groupName": "container base images"
     },
     {
-      "matchManagers": ["custom.regex"],
+      "matchManagers": [
+        "custom.regex"
+      ],
       "groupName": "cli tools"
     },
     {
       "description": "Track the OpenZFS 2.3 line — must match the TrueNAS 25.10 host kmod (zfs-exporter)",
-      "matchDepNames": ["openzfs/zfs"],
+      "matchDepNames": [
+        "openzfs/zfs"
+      ],
       "groupName": "zfs-exporter dependencies",
       "allowedVersions": "<2.4.0"
     },
     {
-      "description": "Codex releases require matching per-architecture SHA256 pins; run .github/recapture-codex-sha.sh after a version bump before merging",
-      "matchDepNames": ["openai/codex"],
+      "description": "Prepare Codex per-architecture checksums automatically before the required build checks",
+      "matchDepNames": [
+        "openai/codex"
+      ],
       "groupName": "codex cli",
-      "automerge": false
+      "automerge": true
     },
     {
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "github actions"
     },
     {
       "description": "UBI base images carry security fixes as new digests/builds — ship them immediately, outside the weekly schedule and age gate",
-      "matchDatasources": ["docker"],
-      "matchPackageNames": ["registry.access.redhat.com/**"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "registry.access.redhat.com/**"
+      ],
       "groupName": "ubi base images",
-      "schedule": ["at any time"],
+      "schedule": [
+        "at any time"
+      ],
       "minimumReleaseAge": null
     },
     {
-      "matchManagers": ["npm"],
+      "matchManagers": [
+        "npm"
+      ],
       "groupName": "npm dependencies"
     },
     {
       "description": "Review Omnigent base/source updates together and refresh the verified source archive checksum",
-      "matchFileNames": ["apps/omnigent-slack/**"],
+      "matchFileNames": [
+        "apps/omnigent-slack/**"
+      ],
       "groupName": "omnigent Slack dependencies",
       "automerge": false
+    },
+    {
+      "description": "Lock maintenance has no release timestamp; do not leave its stability check pending",
+      "matchUpdateTypes": [
+        "lockFileMaintenance",
+        "lockfileUpdate"
+      ],
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "Coding agent releases use the same three-day delay as igou-devenv",
+      "matchDepNames": [
+        "anthropics/claude-code",
+        "cursor-agent",
+        "anomalyco/opencode",
+        "openai/codex"
+      ],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "uv follows semver and is pinned to its multi-architecture image digest",
+      "matchPackageNames": [
+        "ghcr.io/astral-sh/uv"
+      ],
+      "versioning": "semver"
+    },
+    {
+      "description": "Prepare Cursor per-architecture checksums before the required build checks",
+      "matchDepNames": [
+        "cursor-agent"
+      ],
+      "groupName": "cursor agent cli"
     }
   ],
   "customManagers": [
     {
       "description": "Update pinned versions in Containerfiles via '# renovate:' comments",
       "customType": "regex",
-      "managerFilePatterns": ["/Containerfile$/"],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\n(?:ARG )?\\w+_VERSION=\"(?<currentValue>[^\"]+)\""
+      "managerFilePatterns": [
+        "/Containerfile$/"
       ],
-      "versioningTemplate": "semver"
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?(?: versioning=(?<versioning>\\S+))?\\n(?:ARG )?\\w+_VERSION=\"(?<currentValue>[^\"]+)\""
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
     }
-  ]
+  ],
+  "pip_requirements": {
+    "enabled": false
+  },
+  "pip-compile": {
+    "managerFilePatterns": [
+      "/(^|/)requirements\\.txt$/"
+    ]
+  },
+  "constraints": {
+    "python": "3.12"
+  },
+  "gitIgnoredAuthors": [
+    "41898282+github-actions[bot]@users.noreply.github.com"
+  ],
+  "customDatasources": {
+    "cursor-agent": {
+      "defaultRegistryUrlTemplate": "https://cursor.com/install",
+      "format": "plain",
+      "transformTemplates": [
+        "{ \"releases\": [releases[$contains(version, 'DOWNLOAD_URL=')].{ \"version\": $match(version, /downloads\\.cursor\\.com\\/lab\\/([^/]+)/).groups[0], \"releaseTimestamp\": $join($split($substring($match(version, /downloads\\.cursor\\.com\\/lab\\/([^/]+)/).groups[0], 0, 10), '.'), '-') & 'T00:00:00Z' }] }"
+      ]
+    }
+  }
 }
