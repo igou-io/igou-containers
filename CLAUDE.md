@@ -58,7 +58,7 @@ Hardened at runtime via podman flags (`--cap-drop=ALL`, noexec `/tmp`, resource 
 
 **Dependencies managed by Renovate:**
 - `requirements.in` + hashed `requirements.txt` — direct and transitive Python packages (pip-compile manager)
-- `package.json` — `@anthropic-ai/sandbox-runtime` seccomp filter (npm manager)
+- `# renovate:` ARG annotation — `@anthropic-ai/sandbox-runtime` standalone seccomp binary (npm datasource)
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
 - `FROM` lines — UBI base image digests (dockerfile manager)
 
@@ -148,7 +148,7 @@ Vendoring is intentional: rigrunner's source of truth is the `rigrunner-fable` p
 - ACP (`acp-codex-control-plane`, `acp-codex-runner`) and MCPO are retired; their build contexts were removed. Existing published images are retained.
 - Claude Code, Cursor, OpenShift `oc`, and MinIO `mc` have annotated version pins. MinIO downloads come from its archived GitHub release assets, verified against the release checksum.
 - Edit direct Python requirements in `apps/<app>/requirements.in`. Regenerate the lock from that app directory with `uv pip compile --python-version=3.12 --universal --generate-hashes --output-file=requirements.txt requirements.in`. Container builds enforce hashes. Renovate's pip-compile manager updates inputs and locks; lockfile maintenance is exempt from the release-age gate.
-- Claude's sandbox filter uses `npm ci --ignore-scripts` with `package-lock.json`.
+- Claude's sandbox filter is extracted with `npm pack --ignore-scripts`; its unused JavaScript dependencies are not installed.
 - `.github/workflows/dependency-pins.yml` prepares Codex, Cursor, and Omnigent checksum changes on same-repository Renovate PRs. It executes the trusted base helper, reads PR Containerfiles as data, commits changed hashes atomically, and explicitly dispatches both required checks because GITHUB_TOKEN commits do not trigger PR workflows. Omnigent still requires review.
 - Use `.github/recapture-codex-sha.sh` for a manual Codex bump.
 - The weekly uncached build refreshes repository-managed RPMs; Renovate still owns base-image and standalone binary pins.

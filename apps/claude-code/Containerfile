@@ -232,18 +232,23 @@ RUN set -eux; \
     "$HOME/.local/bin/claude" --version
 USER root
 
-# Seccomp filter for Claude Code sandbox (blocks unix domain sockets).
-# Version pinned in package.json, managed by Renovate's native npm manager.
+# Fetch only the standalone seccomp binary: the package's JavaScript dependency
+# tree is unused and includes node-forge with an unpatched advisory.
 # v0.0.47+ bakes the BPF program into apply-seccomp; no separate .bpf file.
-COPY package.json package-lock.json /tmp/sandbox/
+# renovate: datasource=npm depName=@anthropic-ai/sandbox-runtime
+ARG SANDBOX_RUNTIME_VERSION="0.0.78"
 RUN set -eux; \
     UARCH=$(uname -m); \
     case "$UARCH" in x86_64) SECCOMP_ARCH=x64;; aarch64) SECCOMP_ARCH=arm64;; *) SECCOMP_ARCH=$UARCH;; esac; \
     SANDBOX_DIR=/opt/claude-sandbox; \
-    mkdir -p "$SANDBOX_DIR"; \
-    cd /tmp/sandbox && npm ci --ignore-scripts && \
-    cp "node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/${SECCOMP_ARCH}/apply-seccomp" "$SANDBOX_DIR/" && \
-    chmod +x "$SANDBOX_DIR/apply-seccomp"
+    mkdir -p "$SANDBOX_DIR" /tmp/sandbox; \
+    cd /tmp/sandbox; \
+    npm pack --ignore-scripts "@anthropic-ai/sandbox-runtime@${SANDBOX_RUNTIME_VERSION}"; \
+    tar -xzf "anthropic-ai-sandbox-runtime-${SANDBOX_RUNTIME_VERSION}.tgz" \
+        --strip-components=4 -C "$SANDBOX_DIR" \
+        "package/vendor/seccomp/${SECCOMP_ARCH}/apply-seccomp"; \
+    chmod +x "$SANDBOX_DIR/apply-seccomp"; \
+    rm -rf /tmp/sandbox
 
 # ---------------------------------------------------------------------------
 # Final minimal image
