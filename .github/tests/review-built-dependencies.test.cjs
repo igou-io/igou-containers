@@ -132,6 +132,17 @@ test('empty SBOMs and malformed package URLs fail closed', () => {
   assert.throws(() => snapshotFor(malformed, plan, image), /Invalid SBOM package URL/);
 });
 
+test('flattening remaps dependency links to qualified package URLs and rejects dangling references', () => {
+  const data = sbom();
+  data.manifests.first.resolved.package.dependencies = ['rpm'];
+  data.manifests.second = { resolved: { rpm: { package_url: 'pkg:rpm/redhat/example@1?arch=aarch64', scope: 'runtime' } } };
+  const plan = { runId: 123, head, ref: 'refs/pull/12/head' }, image = { app: 'codex', arch: 'arm64' };
+  const packages = snapshotFor(data, plan, image).manifests['apps/codex/arm64.image'].resolved;
+  assert.deepEqual(packages['pkg:golang/example.com/tool@1.2.3'].dependencies, ['pkg:rpm/redhat/example@1?arch=aarch64']);
+  data.manifests.first.resolved.package.dependencies = ['missing'];
+  assert.throws(() => snapshotFor(data, plan, image), /Invalid SBOM dependency reference/);
+});
+
 test('all expected architectures are validated before submitting any snapshots', async t => {
   const { args, calls } = fixture();
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'igou-sbom-test-'));

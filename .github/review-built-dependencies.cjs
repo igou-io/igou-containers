@@ -61,12 +61,17 @@ async function resolveRun({ github, context, core }, runId) {
 
 function snapshotFor(snapshot, plan, { app, arch }) {
   if (snapshot.version !== 0 || !snapshot.detector?.version || !snapshot.manifests || typeof snapshot.manifests !== 'object') throw new Error('Invalid Syft GitHub SBOM');
-  const resolved = {};
+  // Syft links use original keys and can cross source manifests.
+  const resolved = {}, keys = {};
   for (const manifest of Object.values(snapshot.manifests)) {
     if (manifest.resolved != null && (typeof manifest.resolved !== 'object' || Array.isArray(manifest.resolved))) throw new Error('Invalid resolved SBOM packages');
+    for (const [key, dependency] of Object.entries(manifest.resolved || {})) keys[key] = dependency.package_url;
+  }
+  for (const manifest of Object.values(snapshot.manifests)) {
     for (const dependency of Object.values(manifest.resolved || {})) {
       if (typeof dependency.package_url !== 'string' || !/^pkg:[a-z][a-z0-9.-]*\//.test(dependency.package_url)) throw new Error('Invalid SBOM package URL');
-      resolved[dependency.package_url] = { ...dependency, scope: dependency.scope || 'runtime' };
+      if (dependency.dependencies != null && (!Array.isArray(dependency.dependencies) || dependency.dependencies.some(key => !keys[key]))) throw new Error('Invalid SBOM dependency reference');
+      resolved[dependency.package_url] = { ...dependency, scope: dependency.scope || 'runtime', ...(dependency.dependencies ? { dependencies: [...new Set(dependency.dependencies.map(key => keys[key]))] } : {}) };
     }
   }
   if (!Object.keys(resolved).length) throw new Error(`Empty SBOM for ${app}/${arch}`);
