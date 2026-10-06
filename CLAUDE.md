@@ -152,3 +152,5 @@ Vendoring is intentional: rigrunner's source of truth is the `rigrunner-fable` p
 - `.github/workflows/dependency-pins.yml` prepares Codex, Cursor, and Omnigent checksum changes on same-repository Renovate PRs. It executes the trusted base helper, reads PR Containerfiles as data, commits changed hashes atomically, and explicitly dispatches both required checks because GITHUB_TOKEN commits do not trigger PR workflows. Omnigent still requires review.
 - Use `.github/recapture-codex-sha.sh` for a manual Codex bump.
 - The weekly uncached build refreshes repository-managed RPMs; Renovate still owns base-image and standalone binary pins.
+
+Renovate convergence uses `prHourlyLimit: 0`, `prConcurrentLimit: 0`, and `branchConcurrentLimit: 0`; grouped eligible updates are not held behind the default creation caps. The weekly schedule, release-age gates, required checks, and Omnigent manual review still apply.

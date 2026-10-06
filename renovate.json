@@ -23,7 +23,7 @@
       "groupName": "cli tools"
     },
     {
-      "description": "Track the OpenZFS 2.3 line — must match the TrueNAS 25.10 host kmod (zfs-exporter)",
+      "description": "Track the OpenZFS 2.3 line \u2014 must match the TrueNAS 25.10 host kmod (zfs-exporter)",
       "matchDepNames": [
         "openzfs/zfs"
       ],
@@ -45,7 +45,7 @@
       "groupName": "github actions"
     },
     {
-      "description": "UBI base images carry security fixes as new digests/builds — ship them immediately, outside the weekly schedule and age gate",
+      "description": "UBI base images carry security fixes as new digests/builds \u2014 ship them immediately, outside the weekly schedule and age gate",
       "matchDatasources": [
         "docker"
       ],
@@ -140,5 +140,8 @@
         "{ \"releases\": [releases[$contains(version, 'DOWNLOAD_URL=')].{ \"version\": $match(version, /downloads\\.cursor\\.com\\/lab\\/([^/]+)/).groups[0], \"releaseTimestamp\": $join($split($substring($match(version, /downloads\\.cursor\\.com\\/lab\\/([^/]+)/).groups[0], 0, 10), '.'), '-') & 'T00:00:00Z' }] }"
       ]
     }
-  }
+  },
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 0,
+  "branchConcurrentLimit": 0
 }
