@@ -140,8 +140,5 @@
         "{ \"releases\": [releases[$contains(version, 'DOWNLOAD_URL=')].{ \"version\": $match(version, /downloads\\.cursor\\.com\\/lab\\/([^/]+)/).groups[0], \"releaseTimestamp\": $join($split($substring($match(version, /downloads\\.cursor\\.com\\/lab\\/([^/]+)/).groups[0], 0, 10), '.'), '-') & 'T00:00:00Z' }] }"
       ]
     }
-  },
-  "prHourlyLimit": 0,
-  "prConcurrentLimit": 0,
-  "branchConcurrentLimit": 0
+  }
 }
