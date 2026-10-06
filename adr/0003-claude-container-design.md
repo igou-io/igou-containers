@@ -1,5 +1,7 @@
 # ADR-0003: Hardened Claude Container Design
 
+**2026-10-06 dependency update:** Claude Code and the standalone sandbox seccomp binary now use Renovate-tracked Containerfile version pins. The sandbox build uses `npm pack --ignore-scripts` and extracts only `apply-seccomp`; it no longer installs the unused JavaScript dependency tree or uses `package.json`. Python dependencies use `requirements.in` and a hashed `requirements.txt` lock.
+
 ## Status
 
 Accepted

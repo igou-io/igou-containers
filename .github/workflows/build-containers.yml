@@ -26,6 +26,11 @@ on:
         default: "*"
         type: string
 
+# Keep only the current PR build; publish and scheduled runs finish normally.
+concurrency:
+  group: build-containers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
