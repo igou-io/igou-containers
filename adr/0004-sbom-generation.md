@@ -1,5 +1,8 @@
 # ADR-0004: Software Bill of Materials (SBOM) Generation
 
+**2026-10-06 CI update:** `build-containers.yml` exports per-platform SPDX/GitHub SBOM artifacts for PRs and publishing builds. `dependency-review.yml` validates a completed build run, submits all required architecture snapshots, and creates the required check on the verified PR head. Its `workflow_run` code runs from the default branch; SBOM artifacts are parsed as data. Manual retries take a build run ID, not caller-supplied comparison refs.
+
+
 ## Status
 
 Accepted

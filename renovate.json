@@ -23,7 +23,7 @@
       "groupName": "cli tools"
     },
     {
-      "description": "Track the OpenZFS 2.3 line \u2014 must match the TrueNAS 25.10 host kmod (zfs-exporter)",
+      "description": "Track the OpenZFS 2.3 line — must match the TrueNAS 25.10 host kmod (zfs-exporter)",
       "matchDepNames": [
         "openzfs/zfs"
       ],
@@ -45,7 +45,7 @@
       "groupName": "github actions"
     },
     {
-      "description": "UBI base images carry security fixes as new digests/builds \u2014 ship them immediately, outside the weekly schedule and age gate",
+      "description": "UBI base images carry security fixes as new digests/builds — ship them immediately, outside the weekly schedule and age gate",
       "matchDatasources": [
         "docker"
       ],
@@ -116,6 +116,17 @@
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?(?: versioning=(?<versioning>\\S+))?\\n(?:ARG )?\\w+_VERSION=\"(?<currentValue>[^\"]+)\""
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    },
+    {
+      "description": "Track the pinned SBOM generator",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.*\\.yml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n\\s+syft-version: (?<currentValue>\\S+)"
+      ],
+      "versioningTemplate": "semver"
     }
   ],
   "pip_requirements": {

@@ -2,15 +2,15 @@
 name: Dependency review
 
 on:
-  pull_request:
+  workflow_run:
+    workflows:
+      - Build and Push Containers
+    types:
+      - completed
   workflow_dispatch:
     inputs:
-      base:
-        description: "Base commit for the dependency comparison"
-        required: true
-        type: string
-      head:
-        description: "Head commit for the dependency comparison"
+      run_id:
+        description: "Completed Build and Push Containers run to review"
         required: true
         type: string
 
@@ -18,21 +18,72 @@ permissions:
   contents: read
 
 jobs:
-  dependency-review:
+  review-built-images:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: write
+      actions: read
+      contents: write
+      checks: write
+      pull-requests: read
     steps:
-      - name: Checkout
+      # workflow_run executes the default branch version. Manual retries use
+      # their selected workflow revision, never a build/PR checkout.
+      - name: Checkout review helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
 
+      - name: Validate build run and PR commit
+        id: resolve
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BUILD_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+        with:
+          script: |
+            const plan = await require('./.github/review-built-dependencies.cjs').resolveRun({github, context, core}, process.env.BUILD_RUN_ID);
+            if (!plan) return;
+            core.setOutput('plan', JSON.stringify(plan));
+            core.setOutput('images', plan.expected.length);
+            core.setOutput('run', plan.runId);
+            core.setOutput('pr', plan.pr || '');
+            core.setOutput('base', plan.base || '');
+            core.setOutput('head', plan.head);
+
+      - name: Download SBOM data
+        if: steps.resolve.outputs.plan != '' && steps.resolve.outputs.images != '0'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.resolve.outputs.run }}
+          pattern: '*-sbom'
+          path: ${{ runner.temp }}/image-sboms
+
+      - name: Submit validated dependency snapshots
+        if: steps.resolve.outputs.plan != '' && steps.resolve.outputs.images != '0'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          REVIEW_PLAN: ${{ steps.resolve.outputs.plan }}
+        with:
+          script: |
+            await require('./.github/review-built-dependencies.cjs').publishSnapshots({github, context, core}, JSON.parse(process.env.REVIEW_PLAN), `${process.env.RUNNER_TEMP}/image-sboms`);
+
       - name: Dependency review
+        if: steps.resolve.outputs.pr != ''
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
-          base-ref: ${{ inputs.base || github.event.pull_request.base.sha }}
-          head-ref: ${{ inputs.head || github.event.pull_request.head.sha }}
+          base-ref: ${{ steps.resolve.outputs.base }}
+          head-ref: ${{ steps.resolve.outputs.head }}
           fail-on-severity: high
-          comment-summary-in-pr: ${{ github.event_name == 'pull_request' && 'on-failure' || 'never' }}
+          fail-on-scopes: runtime, development, unknown
+          comment-summary-in-pr: never
+
+      - name: Complete required check on the reviewed commit
+        if: always() && steps.resolve.outputs.check != ''
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          REVIEW_CHECK: ${{ steps.resolve.outputs.check }}
+          REVIEW_STATUS: ${{ job.status }}
+        with:
+          script: |
+            await require('./.github/review-built-dependencies.cjs').finishCheck({github, context}, process.env.REVIEW_CHECK, process.env.REVIEW_STATUS);

@@ -54,37 +54,63 @@ test('privileged preparation rejects foreign PRs without reading files', async (
   await assert.rejects(prepare({ github, context: { repo: { owner: 'igou-io', repo: 'igou-containers' }, payload: { pull_request: { number: 1 } } }, core: {} }), /Not an eligible/);
 });
 
-function fixture({ unchanged = false, racing = false } = {}) {
+function fixture({ unchanged = false, racing = false, prepared = false, existingRun = false } = {}) {
   const calls = [];
   const pr = { number: 12, user: { login: 'renovate[bot]' }, head: { repo: { full_name: 'igou-io/igou-containers' }, ref: 'renovate/codex-cli', sha: 'head' }, base: { sha: 'base' } };
+  let content = prepared ? codex.replaceAll(zero, sha) : codex;
   const github = {
-    paginate: async () => [{ filename: 'apps/codex/Containerfile', status: 'modified' }],
+    paginate: async method => method === github.rest.actions.listWorkflowRuns ?
+      (existingRun ? [{ head_sha: pr.head.sha, status: 'in_progress' }] : []) :
+      [{ filename: 'apps/codex/Containerfile', status: 'modified' }],
     rest: {
       pulls: { get: async () => ({ data: pr }), listFiles: () => {} },
-      repos: { getContent: async ({ ref }) => ({ data: { content: Buffer.from(ref === 'base' && !unchanged ? codex.replace('0.157.1', '0.157.0') : codex).toString('base64') } }) },
+      repos: { getContent: async ({ ref }) => ({ data: { content: Buffer.from(ref === 'base' && !unchanged ? codex.replace('0.157.1', '0.157.0') : content).toString('base64') } }) },
       git: {
-        getRef: async () => ({ data: { object: { sha: racing ? 'changed' : 'head' } } }),
+        getRef: async () => ({ data: { object: { sha: racing ? 'changed' : pr.head.sha } } }),
         getCommit: async () => ({ data: { tree: { sha: 'old-tree' } } }),
-        createTree: async options => { calls.push(['tree', options]); return { data: { sha: 'new-tree' } }; },
+        createTree: async options => { calls.push(['tree', options]); content = options.tree[0].content; return { data: { sha: 'new-tree' } }; },
         createCommit: async options => { calls.push(['commit', options]); return { data: { sha: 'new-head' } }; },
-        updateRef: async options => { calls.push(['ref', options]); },
+        updateRef: async options => { calls.push(['ref', options]); pr.head.sha = options.sha; },
       },
-      actions: { createWorkflowDispatch: async options => { calls.push(['dispatch', options]); } },
+      actions: { listWorkflowRuns: () => {}, createWorkflowDispatch: async options => { calls.push(['dispatch', options]); } },
     },
   };
   return { calls, args: { github, context: { repo: { owner: 'igou-io', repo: 'igou-containers' }, payload: { pull_request: { number: 12 } } }, core: { info: () => {} } } };
 }
 
-test('checksum preparation commits an atomic patch and dispatches both required checks', async () => {
+test('checksum preparation commits an atomic patch and dispatches the build and review chain', async () => {
   const { calls, args } = fixture();
   await prepare(args, async () => new Response(manifest()));
-  assert.deepEqual(calls.map(([name]) => name), ['tree', 'commit', 'ref', 'dispatch', 'dispatch']);
+  assert.deepEqual(calls.map(([name]) => name), ['tree', 'commit', 'ref', 'dispatch']);
   assert.ok(calls[0][1].tree[0].content.includes(sha));
   assert.equal(calls[2][1].force, false);
   assert.equal(calls[3][1].workflow_id, 'build-containers.yml');
   assert.deepEqual(calls[3][1].inputs, { app: 'codex' });
-  assert.equal(calls[4][1].workflow_id, 'dependency-review.yml');
-  assert.deepEqual(calls[4][1].inputs, { base: 'base', head: 'new-head' });
+});
+
+test('prepared checksums still dispatch missing checks', async () => {
+  const { calls, args } = fixture({ prepared: true });
+  await prepare(args, async () => new Response(manifest()));
+  assert.deepEqual(calls.map(([name]) => name), ['dispatch']);
+});
+
+test('a dispatch failure after committing hashes recovers on rerun', async () => {
+  const { calls, args } = fixture();
+  const dispatch = args.github.rest.actions.createWorkflowDispatch;
+  let fail = true;
+  args.github.rest.actions.createWorkflowDispatch = async options => {
+    if (fail) { fail = false; throw new Error('503 temporary failure'); }
+    return dispatch(options);
+  };
+  await assert.rejects(prepare(args, async () => new Response(manifest())), /503/);
+  await prepare(args, async () => new Response(manifest()));
+  assert.deepEqual(calls.map(([name]) => name), ['tree', 'commit', 'ref', 'dispatch']);
+});
+
+test('an existing build is not dispatched twice', async () => {
+  const { calls, args } = fixture({ prepared: true, existingRun: true });
+  await prepare(args, async () => new Response(manifest()));
+  assert.deepEqual(calls, []);
 });
 
 test('unchanged versions retain their trust pins and do not dispatch a build', async () => {

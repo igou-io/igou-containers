@@ -62,25 +62,32 @@ async function prepare({ github, context, core }, fetcher = fetch) {
   if (pr.user.login !== 'renovate[bot]' || pr.head.repo.full_name !== `${owner}/${repo}` || !branches.includes(pr.head.ref)) throw new Error('Not an eligible Renovate PR');
   const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: pr.number });
   const changes = [];
+  const apps = [];
   for (const file of files.filter(file => definitions[file.filename] && file.status === 'modified')) {
     const read = async ref => Buffer.from((await github.rest.repos.getContent({ owner, repo, path: file.filename, ref })).data.content, 'base64').toString('utf8');
     const head = await read(pr.head.sha);
     const base = await read(pr.base.sha);
     // Preserve existing trust pins unless the version actually changes.
     if (version(file.filename, head) === version(file.filename, base)) continue;
+    apps.push(file.filename.split('/')[1]);
     const content = await recapture(file.filename, head, fetcher);
     if (content !== head) changes.push({ path: file.filename, mode: '100644', type: 'blob', content });
   }
-  if (!changes.length) return core.info('Dependency checksums already prepared.');
+  if (!apps.length) return core.info('No dependency version changes to prepare.');
   const current = (await github.rest.git.getRef({ owner, repo, ref: `heads/${pr.head.ref}` })).data.object.sha;
   if (current !== pr.head.sha) throw new Error('PR changed during checksum preparation; retry.');
-  const tree = (await github.rest.git.createTree({ owner, repo, base_tree: (await github.rest.git.getCommit({ owner, repo, commit_sha: current })).data.tree.sha, tree: changes })).data;
-  const commit = (await github.rest.git.createCommit({ owner, repo, message: 'chore(deps): refresh dependency checksums', tree: tree.sha, parents: [current], author: { name: 'github-actions[bot]', email: '41898282+github-actions[bot]@users.noreply.github.com' } })).data;
-  await github.rest.git.updateRef({ owner, repo, ref: `heads/${pr.head.ref}`, sha: commit.sha, force: false });
-  // GITHUB_TOKEN commits do not trigger pull_request workflows. Dispatch a
-  // build explicitly so the new commit receives the required checks.
-  await github.rest.actions.createWorkflowDispatch({ owner, repo, workflow_id: 'build-containers.yml', ref: pr.head.ref, inputs: { app: changes.map(file => file.path.split('/')[1]).join(' ') } });
-  await github.rest.actions.createWorkflowDispatch({ owner, repo, workflow_id: 'dependency-review.yml', ref: pr.head.ref, inputs: { base: pr.base.sha, head: commit.sha } });
+  let head = current;
+  if (changes.length) {
+    const tree = (await github.rest.git.createTree({ owner, repo, base_tree: (await github.rest.git.getCommit({ owner, repo, commit_sha: current })).data.tree.sha, tree: changes })).data;
+    const commit = (await github.rest.git.createCommit({ owner, repo, message: 'chore(deps): refresh dependency checksums', tree: tree.sha, parents: [current], author: { name: 'github-actions[bot]', email: '41898282+github-actions[bot]@users.noreply.github.com' } })).data;
+    await github.rest.git.updateRef({ owner, repo, ref: `heads/${pr.head.ref}`, sha: commit.sha, force: false });
+    head = commit.sha;
+  }
+  // A retry after updateRef must still start missing checks. One build run
+  // produces the SBOMs and triggers dependency review after it completes.
+  const runs = await github.paginate(github.rest.actions.listWorkflowRuns, { owner, repo, workflow_id: 'build-containers.yml', head_sha: head });
+  if (runs.some(run => run.head_sha === head && (run.status !== 'completed' || run.conclusion === 'success'))) return core.info('Build checks already started.');
+  await github.rest.actions.createWorkflowDispatch({ owner, repo, workflow_id: 'build-containers.yml', ref: pr.head.ref, inputs: { app: [...new Set(apps)].join(' ') } });
 }
 
 module.exports = { definitions, version, recapture, prepare };
