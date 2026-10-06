@@ -8,7 +8,7 @@ Monorepo for building container images, pushed to GHCR (`ghcr.io/igou-io/<app>`)
 
 ## CI/CD
 
-GitHub Actions workflow (`.github/workflows/build-containers.yml`) automatically detects which `apps/` subdirectories changed and builds only those. Images are built for `linux/amd64` and `linux/arm64`, pushed on merge to `main`. PRs get build-only (no push).
+GitHub Actions workflow (`.github/workflows/build-containers.yml`) automatically detects which `apps/` subdirectories changed and builds only those. Images are built for `linux/amd64` and `linux/arm64`, pushed on merge to `main`. PRs and manual dispatches get build-only (no push). Monday 06:00 UTC rebuilds every remaining app without build cache and publishes fresh RPM contents.
 
 Image tags: `latest`, `YYYY.MM.DD`, full commit SHA, and branch name.
 
@@ -46,15 +46,6 @@ Runtime note: the SPI character device must be passed through and readable, e.g.
 - `# renovate:` ARG annotation — pinned mcp-adc-exporter release tag (github-tags datasource)
 - `FROM` lines — UBI base image digests (dockerfile manager)
 
-### mcpo
-
-An [MCPO](https://github.com/open-webui/mcpo) (MCP-to-OpenAPI proxy) container bundling several MCP servers. Built on UBI 10 micro with a multi-stage distroless-style build pattern:
-- Stage 1: UBI micro base filesystem
-- Stage 2: UBI full image installs packages into a custom installroot, then uses `uv` to sync Python dependencies from `uv.lock`
-- Final stage: `FROM scratch`, copies only the installroot and `/app` — no package manager or shell in the final image
-
-Python dependencies managed via `uv` with `pyproject.toml` + `uv.lock`. Renovate bot keeps dependencies updated.
-
 ### claude-code
 
 Hardened UBI10-based container for running Claude Code as an agent with infrastructure tools baked in. Self-contained three-stage build (no separate base image):
@@ -66,7 +57,7 @@ Hardened UBI10-based container for running Claude Code as an agent with infrastr
 Hardened at runtime via podman flags (`--cap-drop=ALL`, noexec `/tmp`, resource limits) and Claude Code sandbox settings baked at `/etc/claude/settings.json`. Entrypoint merges baked MCP and sandbox config into user config at startup.
 
 **Dependencies managed by Renovate:**
-- `requirements.txt` — Python packages (pip_requirements manager)
+- `requirements.in` + hashed `requirements.txt` — direct and transitive Python packages (pip-compile manager)
 - `package.json` — `@anthropic-ai/sandbox-runtime` seccomp filter (npm manager)
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
 - `FROM` lines — UBI base image digests (dockerfile manager)
@@ -82,7 +73,7 @@ Hardened UBI10-based container for running [opencode](https://opencode.ai) again
 No baked sandbox config (opencode has no equivalent of Claude's `settings.json` or Cursor's `sandbox.json`), so the entrypoint is a minimal git/GitHub PAT setup with no merge step. The opencode config lives in `~/.config/opencode/opencode.jsonc` on the host and is bind-mounted into the container by the `opencode-run` launcher in `igou-devenv/bin/`.
 
 **Dependencies managed by Renovate:**
-- `requirements.txt` — Python packages (pip_requirements manager)
+- `requirements.in` + hashed `requirements.txt` — direct and transitive Python packages (pip-compile manager)
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
 - `FROM` lines — UBI base image digests (dockerfile manager)
 
@@ -96,7 +87,7 @@ Unhardened sibling of the `opencode` image. Identical build pattern, but two int
 Use this image when you need the agent to install ad-hoc Python packages mid-task. Launch via `opencode-run --dev` (which sets `IMAGE=ghcr.io/igou-io/opencode-dev:latest`) or `opencode-run --image ghcr.io/igou-io/opencode-dev:latest`. Runtime hardening (cap-drop, noexec /tmp, resource limits) is unchanged — only the image-level package-manager removal is reverted. The image's `TMPDIR` is set to `/home/igou/.cache` so pip and uv can use an exec-able scratch dir.
 
 **Dependencies managed by Renovate:**
-- `requirements.txt` — Python packages (pip_requirements manager)
+- `requirements.in` + hashed `requirements.txt` — direct and transitive Python packages (pip-compile manager)
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
 - `FROM` and `COPY --from=` lines — base images and uv tag (dockerfile manager)
 
@@ -111,7 +102,7 @@ Hardened UBI10-based container for running Cursor's agent CLI with the same infr
 Sandbox config baked at `/etc/cursor/sandbox.json` with network deny-by-default policy. Entrypoint merges baked sandbox config into workspace `.cursor/sandbox.json` at startup.
 
 **Dependencies managed by Renovate:**
-- `requirements.txt` — Python packages (pip_requirements manager)
+- `requirements.in` + hashed `requirements.txt` — direct and transitive Python packages (pip-compile manager)
 - `# renovate:` ARG annotations — CLI tool binary versions (custom regex manager)
 - `FROM` lines — UBI base image digests (dockerfile manager)
 
@@ -150,4 +141,14 @@ Vendoring is intentional: rigrunner's source of truth is the `rigrunner-fable` p
 - Base images use Red Hat UBI 10; pin to digest where possible
 - Multi-stage builds targeting minimal final images (scratch or ubi-micro)
 - OpenShift-compatible: run as UID 1001, support arbitrary UID with GID=0
-- **Dependency version pinning**: When a package ecosystem provides a declarative dependency file (e.g., `requirements.txt` for Python, `package.json` for npm), use that file to pin versions rather than inline `ARG` + `# renovate:` comments. Only use `# renovate:` ARG annotations for standalone binary downloads that have no ecosystem dependency file.
+- **Dependency version pinning**: When a package ecosystem provides a declarative dependency file (e.g., `requirements.in` + hashed `requirements.txt` for Python, `package.json` + `package-lock.json` for npm), use that file to pin versions rather than inline `ARG` + `# renovate:` comments. Only use `# renovate:` ARG annotations for standalone binary downloads that have no ecosystem dependency file.
+
+## Dependency updates
+
+- ACP (`acp-codex-control-plane`, `acp-codex-runner`) and MCPO are retired; their build contexts were removed. Existing published images are retained.
+- Claude Code, Cursor, OpenShift `oc`, and MinIO `mc` have annotated version pins. MinIO downloads come from its archived GitHub release assets, verified against the release checksum.
+- Edit direct Python requirements in `apps/<app>/requirements.in`. Regenerate the lock from that app directory with `uv pip compile --python-version=3.12 --universal --generate-hashes --output-file=requirements.txt requirements.in`. Container builds enforce hashes. Renovate's pip-compile manager updates inputs and locks; lockfile maintenance is exempt from the release-age gate.
+- Claude's sandbox filter uses `npm ci --ignore-scripts` with `package-lock.json`.
+- `.github/workflows/dependency-pins.yml` prepares Codex, Cursor, and Omnigent checksum changes on same-repository Renovate PRs. It executes the trusted base helper, reads PR Containerfiles as data, commits changed hashes atomically, and explicitly dispatches both required checks because GITHUB_TOKEN commits do not trigger PR workflows. Omnigent still requires review.
+- Use `.github/recapture-codex-sha.sh` for a manual Codex bump.
+- The weekly uncached build refreshes repository-managed RPMs; Renovate still owns base-image and standalone binary pins.

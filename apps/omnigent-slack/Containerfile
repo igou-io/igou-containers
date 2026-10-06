@@ -11,7 +11,7 @@ ADD --checksum=sha256:b60890516bea9d65ec54599e58e086ecb20862f24a409000ebc64d6152
 
 RUN mkdir /tmp/omnigent-source \
  && tar -xzf /tmp/omnigent.tar.gz -C /tmp/omnigent-source --strip-components=1 \
- && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
+ && /opt/venv/bin/pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt \
  && /opt/venv/bin/pip install --no-cache-dir --no-deps /tmp/omnigent-source/integrations/slack \
  && /opt/venv/bin/pip check \
  && /opt/venv/bin/python -c 'from importlib.metadata import version; import omnigent_slack, slack_bolt; assert version("omnigent-slack") == version("omnigent")' \
