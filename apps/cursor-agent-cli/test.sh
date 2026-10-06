@@ -17,6 +17,7 @@ echo "==> Verifying CLI tools..."
 
 declare -A TOOLS=(
     [kubectl]="kubectl version --client"
+    [oc]="oc version --client"
     [helm]="helm version --short"
     [gh]="gh --version"
     [python3]="python3 --version"
@@ -80,10 +81,10 @@ else
     fail "pip/pip3 not available (found: $(which pip pip3 2>/dev/null))"
 fi
 
-if ! command -v ansible-galaxy &>/dev/null; then
-    ok "ansible-galaxy not available"
+if command -v ansible-galaxy &>/dev/null && ansible-galaxy --version &>/dev/null; then
+    ok "ansible-galaxy retained for collection installs"
 else
-    fail "ansible-galaxy not available"
+    fail "ansible-galaxy executes"
 fi
 
 if ! command -v dnf &>/dev/null && ! command -v rpm &>/dev/null; then

@@ -80,6 +80,10 @@ ARG TKN_VERSION="v0.46.1"
 ARG RCLONE_VERSION="v1.75.1"
 # renovate: datasource=github-releases depName=containers/kubernetes-mcp-server
 ARG K8S_MCP_VERSION="v0.0.67"
+# renovate: datasource=custom.openshift-mirror depName=oc
+ARG OC_VERSION="4.21.34"
+# renovate: datasource=github-releases depName=minio/mc versioning=regex:^RELEASE\.(?<major>\d{4})-(?<minor>\d{2})-(?<patch>\d{2})T\d{2}-\d{2}-\d{2}Z$
+ARG MC_VERSION="RELEASE.2025-08-13T08-35-41Z"
 
 # ---------------------------------------------------------------------------
 # Binary downloads into rootfs
@@ -87,7 +91,7 @@ ARG K8S_MCP_VERSION="v0.0.67"
 RUN set -eux; \
     UARCH=$(uname -m); \
     case "$UARCH" in x86_64) ARCH=amd64;; aarch64) ARCH=arm64;; *) ARCH=$UARCH;; esac; \
-    ARCH_X86=$([ "$ARCH" = "amd64" ] && echo "x86_64" || echo "$ARCH"); \
+    ARCH_X86=$UARCH; \
     ARCH_GNU=$UARCH; \
     BIN=${DNF_INSTALL_ROOT}/usr/local/bin; \
     # kubectl
@@ -109,7 +113,7 @@ RUN set -eux; \
     curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_${ARCH}.tar.gz" \
       | tar -xz -C ${BIN} kustomize; \
     # OpenShift CLI (oc)
-    curl -sSL "https://mirror.openshift.com/pub/openshift-v4/${ARCH_X86}/clients/ocp/latest/openshift-client-linux.tar.gz" \
+    curl -sSL "https://mirror.openshift.com/pub/openshift-v4/${ARCH_X86}/clients/ocp/${OC_VERSION}/openshift-client-linux.tar.gz" \
       | tar -xz -C ${BIN} oc; \
     # virtctl
     curl -sSL -o ${BIN}/virtctl \
@@ -122,9 +126,15 @@ RUN set -eux; \
     TKN_VERSION_BARE="${TKN_VERSION#v}"; \
     curl -sSL "https://github.com/tektoncd/cli/releases/download/${TKN_VERSION}/tkn_${TKN_VERSION_BARE}_Linux_${ARCH_GNU}.tar.gz" \
       | tar -xz -C ${BIN} tkn; \
-    # mc (MinIO client — rolling release, no version pin)
-    curl -sSL -o ${BIN}/mc "https://dl.min.io/client/mc/release/linux-${ARCH}/mc" && \
-    chmod +x ${BIN}/mc; \
+    # mc (MinIO client — versioned release with upstream checksum)
+    MC_ASSET="mc.linux-${ARCH}.${MC_VERSION}"; \
+    MC_BASE="https://github.com/minio/mc/releases/download/${MC_VERSION}"; \
+    curl -fsSL -o /tmp/${MC_ASSET} "${MC_BASE}/${MC_ASSET}" && \
+    curl -fsSL "${MC_BASE}/${MC_ASSET}.sha256sum" -o /tmp/mc.sha256sum && \
+    MC_SHA=$(cut -d' ' -f1 /tmp/mc.sha256sum); \
+    echo "${MC_SHA}  /tmp/${MC_ASSET}" | sha256sum -c - && \
+    install -m 0755 /tmp/${MC_ASSET} ${BIN}/mc && \
+    rm /tmp/${MC_ASSET} /tmp/mc.sha256sum || exit 1; \
     # rclone
     curl -sSL -o /tmp/rclone.zip \
       "https://github.com/rclone/rclone/releases/download/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-${ARCH}.zip" && \
@@ -141,8 +151,7 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 COPY requirements.txt ${DNF_INSTALL_ROOT}/tmp/requirements.txt
 RUN cp /etc/resolv.conf ${DNF_INSTALL_ROOT}/etc/resolv.conf && \
-    chroot ${DNF_INSTALL_ROOT} pip3 install --no-cache-dir -r /tmp/requirements.txt && \
-    chroot ${DNF_INSTALL_ROOT} pip3 install --no-cache-dir yamllint && \
+    chroot ${DNF_INSTALL_ROOT} pip3 install --no-cache-dir --require-hashes -r /tmp/requirements.txt && \
     rm ${DNF_INSTALL_ROOT}/tmp/requirements.txt && \
     rm -f ${DNF_INSTALL_ROOT}/usr/bin/pip ${DNF_INSTALL_ROOT}/usr/bin/pip3 \
           ${DNF_INSTALL_ROOT}/usr/local/bin/pip ${DNF_INSTALL_ROOT}/usr/local/bin/pip3 && \

@@ -6,7 +6,7 @@ This file applies to all Claude Code sessions launched via `claude-run` inside t
 
 You are running inside a hardened UBI10-based container launched via `claude-run`. Key constraints:
 
-- **No package managers**: pip, dnf, rpm, and ansible-galaxy have been removed. All tools are baked into the image.
+- **No package managers**: pip, dnf, and rpm have been removed. Ansible tooling, including ansible-galaxy, is retained. All tools are baked into the image.
 - **No internet access** except: api.anthropic.com, claude.ai, statsig.anthropic.com, sentry.io, github.com
 - **/tmp is noexec**: You cannot download and execute binaries. Use only the tools already installed.
 - **~/.local/bin is read-only**: You cannot modify PATH or install new CLI tools.

@@ -6,10 +6,12 @@ archive is pinned by SHA-256 in `Containerfile`.
 
 Renovate tracks the versioned upstream base image and its digest through the
 Dockerfile manager. Its version argument also selects the matching Slack source
-archive. The seven direct Python requirements are pinned in `requirements.txt`
-and tracked by Renovate's pip requirements manager. Updates for this image do
-not automerge: when the upstream version changes, refresh the `ADD --checksum`
-value from the new archive, then verify the image build and runtime imports.
+archive. The checksum preparation workflow refreshes the source archive hash
+on a version bump. The seven direct Python requirements are pinned in `requirements.in`;
+`requirements.txt` locks their full dependency closure with hashes, managed by
+Renovate's pip-compile manager. Updates for this image do
+not automerge: review the generated checksum update, image build, and runtime
+imports before merging. For a manual version bump, also refresh `ADD --checksum`.
 The build checks that the installed Slack and server package versions match.
 
 Build locally from the repository root:

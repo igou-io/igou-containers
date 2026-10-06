@@ -88,6 +88,10 @@ ARG TKN_VERSION="v0.46.1"
 ARG RCLONE_VERSION="v1.75.1"
 # renovate: datasource=github-releases depName=containers/kubernetes-mcp-server
 ARG K8S_MCP_VERSION="v0.0.67"
+# renovate: datasource=custom.openshift-mirror depName=oc
+ARG OC_VERSION="4.21.34"
+# renovate: datasource=github-releases depName=minio/mc versioning=regex:^RELEASE\.(?<major>\d{4})-(?<minor>\d{2})-(?<patch>\d{2})T\d{2}-\d{2}-\d{2}Z$
+ARG MC_VERSION="RELEASE.2025-08-13T08-35-41Z"
 
 # ---------------------------------------------------------------------------
 # Binary downloads into rootfs
@@ -95,7 +99,7 @@ ARG K8S_MCP_VERSION="v0.0.67"
 RUN set -eux; \
     UARCH=$(uname -m); \
     case "$UARCH" in x86_64) ARCH=amd64;; aarch64) ARCH=arm64;; *) ARCH=$UARCH;; esac; \
-    ARCH_X86=$([ "$ARCH" = "amd64" ] && echo "x86_64" || echo "$ARCH"); \
+    ARCH_X86=$UARCH; \
     ARCH_GNU=$UARCH; \
     BIN=${DNF_INSTALL_ROOT}/usr/local/bin; \
     # kubectl
@@ -117,7 +121,7 @@ RUN set -eux; \
     curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_${ARCH}.tar.gz" \
       | tar -xz -C ${BIN} kustomize; \
     # OpenShift CLI (oc)
-    curl -sSL "https://mirror.openshift.com/pub/openshift-v4/${ARCH_X86}/clients/ocp/latest/openshift-client-linux.tar.gz" \
+    curl -sSL "https://mirror.openshift.com/pub/openshift-v4/${ARCH_X86}/clients/ocp/${OC_VERSION}/openshift-client-linux.tar.gz" \
       | tar -xz -C ${BIN} oc; \
     # virtctl
     curl -sSL -o ${BIN}/virtctl \
@@ -130,9 +134,15 @@ RUN set -eux; \
     TKN_VERSION_BARE="${TKN_VERSION#v}"; \
     curl -sSL "https://github.com/tektoncd/cli/releases/download/${TKN_VERSION}/tkn_${TKN_VERSION_BARE}_Linux_${ARCH_GNU}.tar.gz" \
       | tar -xz -C ${BIN} tkn; \
-    # mc (MinIO client — rolling release, no version pin)
-    curl -sSL -o ${BIN}/mc "https://dl.min.io/client/mc/release/linux-${ARCH}/mc" && \
-    chmod +x ${BIN}/mc; \
+    # mc (MinIO client — versioned release with upstream checksum)
+    MC_ASSET="mc.linux-${ARCH}.${MC_VERSION}"; \
+    MC_BASE="https://github.com/minio/mc/releases/download/${MC_VERSION}"; \
+    curl -fsSL -o /tmp/${MC_ASSET} "${MC_BASE}/${MC_ASSET}" && \
+    curl -fsSL "${MC_BASE}/${MC_ASSET}.sha256sum" -o /tmp/mc.sha256sum && \
+    MC_SHA=$(cut -d' ' -f1 /tmp/mc.sha256sum); \
+    echo "${MC_SHA}  /tmp/${MC_ASSET}" | sha256sum -c - && \
+    install -m 0755 /tmp/${MC_ASSET} ${BIN}/mc && \
+    rm /tmp/${MC_ASSET} /tmp/mc.sha256sum || exit 1; \
     # rclone
     curl -sSL -o /tmp/rclone.zip \
       "https://github.com/rclone/rclone/releases/download/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-${ARCH}.zip" && \
@@ -149,8 +159,7 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 COPY requirements.txt ${DNF_INSTALL_ROOT}/tmp/requirements.txt
 RUN cp /etc/resolv.conf ${DNF_INSTALL_ROOT}/etc/resolv.conf && \
-    chroot ${DNF_INSTALL_ROOT} pip3 install --no-cache-dir -r /tmp/requirements.txt && \
-    chroot ${DNF_INSTALL_ROOT} pip3 install --no-cache-dir yamllint && \
+    chroot ${DNF_INSTALL_ROOT} pip3 install --no-cache-dir --require-hashes -r /tmp/requirements.txt && \
     rm ${DNF_INSTALL_ROOT}/tmp/requirements.txt && \
     rm -f ${DNF_INSTALL_ROOT}/usr/bin/pip ${DNF_INSTALL_ROOT}/usr/bin/pip3 \
           ${DNF_INSTALL_ROOT}/usr/local/bin/pip ${DNF_INSTALL_ROOT}/usr/local/bin/pip3 \
@@ -177,29 +186,69 @@ RUN mkdir -p ${DNF_INSTALL_ROOT}/workspace && \
 # ---------------------------------------------------------------------------
 FROM ${UBI_IMAGE} AS claude-build
 
-RUN dnf install -y nodejs-npm
+RUN dnf install -y nodejs-npm gnupg2
 
 RUN groupadd -g 1000 igou 2>/dev/null || true && \
     useradd -m -u 1000 -g 1000 igou 2>/dev/null || true
 
-# Claude Code CLI
+# Claude Code — verify the signed release checksum manifest with the pinned
+# Anthropic signing-key fingerprint, as in igou-devenv.
+# renovate: datasource=github-releases depName=anthropics/claude-code
+ARG CLAUDE_CODE_VERSION="v2.1.288"
+ARG CLAUDE_CODE_PGP_FPR="31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE"
+ARG CLAUDE_CODE_PGP_URL="https://downloads.claude.ai/keys/claude-code.asc"
 USER 1000
-RUN curl -fsSL https://claude.ai/install.sh | bash && \
-    ~/.local/bin/claude --version
+RUN set -eux; \
+    ARCH_RAW=$(uname -m); \
+    case "$ARCH_RAW" in \
+      x86_64)  ARCH="x64" ;; \
+      aarch64) ARCH="arm64" ;; \
+      *) echo "Unsupported arch: $ARCH_RAW" >&2; exit 1 ;; \
+    esac; \
+    TARBALL="claude-linux-${ARCH}.tar.gz"; \
+    BASE="https://github.com/anthropics/claude-code/releases/download/${CLAUDE_CODE_VERSION}"; \
+    WORK=$(mktemp -d); \
+    export GNUPGHOME="$WORK/gnupg"; \
+    mkdir -p -m 0700 "$GNUPGHOME"; \
+    cd "$WORK"; \
+    curl -fsSL -o key.asc "${CLAUDE_CODE_PGP_URL}"; \
+    gpg --batch --import key.asc; \
+    # Reject any key whose fingerprint doesn't match the pinned anchor.
+    gpg --list-keys --with-colons --with-fingerprint \
+      | awk -F: '$1=="fpr"{print $10}' \
+      | grep -qFx "${CLAUDE_CODE_PGP_FPR}"; \
+    curl -fsSL -o "$TARBALL" "${BASE}/${TARBALL}"; \
+    curl -fsSL -o SHASUMS256.txt "${BASE}/SHASUMS256.txt"; \
+    curl -fsSL -o SHASUMS256.txt.sig "${BASE}/SHASUMS256.txt.sig"; \
+    # Require not just a valid signature, but one from our pinned key.
+    # gpg's --status-fd emits "VALIDSIG <fpr>" only on a good signature from <fpr>.
+    gpg --batch --status-fd 1 --verify SHASUMS256.txt.sig SHASUMS256.txt 2>/dev/null \
+      | grep -qF "VALIDSIG ${CLAUDE_CODE_PGP_FPR}"; \
+    grep " ${TARBALL}\$" SHASUMS256.txt | sha256sum -c -; \
+    mkdir -p "$HOME/.local/share/claude" "$HOME/.local/bin"; \
+    tar -xzf "$TARBALL" -C "$HOME/.local/share/claude"; \
+    ln -sfn "$HOME/.local/share/claude/claude" "$HOME/.local/bin/claude"; \
+    cd / && rm -rf "$WORK"; \
+    "$HOME/.local/bin/claude" --version
 USER root
 
-# Seccomp filter for Claude Code sandbox (blocks unix domain sockets).
-# Version pinned in package.json, managed by Renovate's native npm manager.
+# Fetch only the standalone seccomp binary: the package's JavaScript dependency
+# tree is unused and includes node-forge with an unpatched advisory.
 # v0.0.47+ bakes the BPF program into apply-seccomp; no separate .bpf file.
-COPY package.json /tmp/sandbox/package.json
+# renovate: datasource=npm depName=@anthropic-ai/sandbox-runtime
+ARG SANDBOX_RUNTIME_VERSION="0.0.78"
 RUN set -eux; \
     UARCH=$(uname -m); \
     case "$UARCH" in x86_64) SECCOMP_ARCH=x64;; aarch64) SECCOMP_ARCH=arm64;; *) SECCOMP_ARCH=$UARCH;; esac; \
     SANDBOX_DIR=/opt/claude-sandbox; \
-    mkdir -p "$SANDBOX_DIR"; \
-    cd /tmp/sandbox && npm install --no-save 2>/dev/null && \
-    cp "node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/${SECCOMP_ARCH}/apply-seccomp" "$SANDBOX_DIR/" && \
-    chmod +x "$SANDBOX_DIR/apply-seccomp"
+    mkdir -p "$SANDBOX_DIR" /tmp/sandbox; \
+    cd /tmp/sandbox; \
+    npm pack --ignore-scripts "@anthropic-ai/sandbox-runtime@${SANDBOX_RUNTIME_VERSION}"; \
+    tar -xzf "anthropic-ai-sandbox-runtime-${SANDBOX_RUNTIME_VERSION}.tgz" \
+        --strip-components=4 -C "$SANDBOX_DIR" \
+        "package/vendor/seccomp/${SECCOMP_ARCH}/apply-seccomp"; \
+    chmod +x "$SANDBOX_DIR/apply-seccomp"; \
+    rm -rf /tmp/sandbox
 
 # ---------------------------------------------------------------------------
 # Final minimal image

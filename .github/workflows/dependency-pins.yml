@@ -1,0 +1,44 @@
+name: Prepare dependency checksums
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - apps/codex/Containerfile
+      - apps/cursor-agent-cli/Containerfile
+      - apps/omnigent-slack/Containerfile
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-pins-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: >-
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.head_ref == 'renovate/codex-cli' ||
+       github.head_ref == 'renovate/cursor-agent-cli' ||
+       github.head_ref == 'renovate/omnigent-slack-dependencies')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      actions: write
+    steps:
+      # Execute only the trusted base-branch helper. PR files are read as data
+      # through the API; no PR checkout, scripts, or containers run here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await require('./.github/prepare-dependency-pins.cjs').prepare({github, context, core});
