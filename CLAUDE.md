@@ -21,6 +21,16 @@ Apps that can't build for all default platforms declare their own in an `apps/<a
 
 ## Current Apps
 
+### hermes-agent-k8s
+
+Complete from-source build of the pinned `david-igou/hermes-agent` Kubernetes
+branch. `apps/hermes-agent-k8s/prepare-context.sh` assembles the source context;
+the Containerfile and Kubernetes/Firecrawl extras are maintained here. Debian/s6
+is retained for compatibility with the fork's PM-managed runtime. Published as
+`ghcr.io/igou-io/hermes-agent-k8s` for the three production Hermes instances.
+The fork commit is tracked by Renovate in `source.env`; Python/tool dependencies
+come from the fork lock files. See the app README for build and smoke-test commands.
+
 ### adb-exporter
 
 From-source build of [adb-exporter](https://github.com/david-igou/adb-exporter), a Prometheus exporter for Android devices scraped over the `adb` CLI. UBI 9 based — the runtime needs the `adb` binary, and EPEL packages `android-tools` only for el9 (not el10). Three-stage build:

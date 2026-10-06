@@ -5,13 +5,23 @@ name: Build and Push Containers
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
     paths:
       - 'apps/**'
   # No paths filter: change detection happens in the prepare job, and the
   # all-green aggregate must report on every PR to serve as a required check.
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App to build and publish (branch builds omit latest/date tags)
+        required: true
+        type: string
+        default: hermes-agent-k8s
 
 permissions:
   contents: read
@@ -31,6 +41,7 @@ jobs:
       - name: Get changed files
         uses: bjw-s-labs/action-changed-files@147be9638332cf68fd60714a610509d7a9360d60 # v0.7.0
         id: changed-files
+        if: ${{ github.event_name != 'workflow_dispatch' }}
         with:
           path: apps
           include_only_directories: true
@@ -64,6 +75,14 @@ jobs:
               .split(' ')
               .filter(Boolean)
               .filter((app) => fs.existsSync(`apps/${app}/Containerfile`));
+            for (const app of appsToBuild) {
+              if (!/^[a-z0-9][a-z0-9-]*$/.test(app)) {
+                throw new Error(`Invalid app name: ${app}`);
+              }
+            }
+            if (context.eventName === 'workflow_dispatch' && appsToBuild.length === 0) {
+              throw new Error('No requested app has a Containerfile');
+            }
             core.setOutput('apps', JSON.stringify(appsToBuild));
             console.log('apps:', JSON.stringify(appsToBuild, null, 2));
             core.summary.addHeading('Apps to build:').addList(appsToBuild).write();
@@ -86,6 +105,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - name: Prepare build context
+        id: context
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          context="$GITHUB_WORKSPACE/apps/$APP"
+          test -f "$context/Containerfile"
+          if [ -f "$context/prepare-context.sh" ]; then
+            context="$(bash "$context/prepare-context.sh")"
+          fi
+          test -f "$context/Containerfile"
+          echo "path=$context" >> "$GITHUB_OUTPUT"
+
       # Apps that can't build for all default platforms declare their own in
       # an apps/<app>/PLATFORMS file (e.g. zfs-exporter: OpenZFS publishes no
       # aarch64 EL packages)
@@ -105,7 +138,7 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Log in to GHCR
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -130,17 +163,27 @@ jobs:
         if: ${{ !env.ACT }}
         with:
           provenance: false
-          context: ./apps/${{ matrix.app }}
-          file: ./apps/${{ matrix.app }}/Containerfile
-          push: ${{ github.event_name == 'push' }}
+          context: ${{ steps.context.outputs.path }}
+          file: ${{ steps.context.outputs.path }}/Containerfile
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: ${{ steps.platforms.outputs.platforms }}
 
+      - name: Verify published image
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        env:
+          APP: ${{ matrix.app }}
+          IMAGE: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}@${{ steps.build.outputs.digest }}
+        run: |
+          if [ -f "apps/$APP/smoke-test.sh" ]; then
+            bash "apps/$APP/smoke-test.sh" "$IMAGE"
+          fi
+
       - name: Attest build provenance
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}
@@ -148,10 +191,10 @@ jobs:
           push-to-registry: true
 
       - name: Generate SBOM
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
-          image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}
+          image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}@${{ steps.build.outputs.digest }}
           artifact-name: ${{ matrix.app }}-sbom
           output-file: ${{ matrix.app }}.spdx.json
           format: spdx-json

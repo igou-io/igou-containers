@@ -60,6 +60,18 @@
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\n(?:ARG )?\\w+_VERSION=\"(?<currentValue>[^\"]+)\""
       ],
       "versioningTemplate": "semver"
+    },
+    {
+      "description": "Track the pinned Hermes Kubernetes fork branch",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^apps/hermes-agent-k8s/source\\.env$/"
+      ],
+      "matchStrings": [
+        "HERMES_FORK_REPO=(?<packageName>\\S+)\\nHERMES_FORK_BRANCH=(?<currentValue>\\S+)\\nHERMES_FORK_REF=(?<currentDigest>[a-f0-9]{40})"
+      ],
+      "depNameTemplate": "david-igou/hermes-agent",
+      "datasourceTemplate": "git-refs"
     }
   ]
 }
