@@ -73,11 +73,11 @@ ARG KUBECTL_VERSION="v1.37.1"
 # renovate: datasource=github-releases depName=helm/helm
 ARG HELM_VERSION="v4.3.0"
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION="v2.101.0"
+ARG GH_VERSION="v2.102.0"
 # renovate: datasource=github-releases depName=argoproj/argo-cd
 ARG ARGOCD_VERSION="v3.5.3"
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.*)$
-ARG KUSTOMIZE_VERSION="v5.8.1"
+ARG KUSTOMIZE_VERSION="v5.8.2"
 # renovate: datasource=github-releases depName=kubevirt/kubevirt
 ARG VIRTCTL_VERSION="v1.9.0"
 # renovate: datasource=github-releases depName=yannh/kubeconform
