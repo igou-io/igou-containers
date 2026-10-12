@@ -1,5 +1,7 @@
 # ADR-0003: Hardened Claude Container Design
 
+> Historical decision: the Claude Code container and its devenv launchers are retired. This document records the original design; it is not a current runbook.
+
 ## Status
 
 Accepted

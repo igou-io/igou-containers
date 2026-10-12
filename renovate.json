@@ -23,12 +23,6 @@
       "allowedVersions": "<2.4.0"
     },
     {
-      "description": "Codex releases require matching per-architecture SHA256 pins; run .github/recapture-codex-sha.sh after a version bump before merging",
-      "matchDepNames": ["openai/codex"],
-      "groupName": "codex cli",
-      "automerge": false
-    },
-    {
       "matchManagers": ["github-actions"],
       "groupName": "github actions"
     },
@@ -43,12 +37,6 @@
     {
       "matchManagers": ["npm"],
       "groupName": "npm dependencies"
-    },
-    {
-      "description": "Review Omnigent base/source updates together and refresh the verified source archive checksum",
-      "matchFileNames": ["apps/omnigent-slack/**"],
-      "groupName": "omnigent Slack dependencies",
-      "automerge": false
     }
   ],
   "customManagers": [
