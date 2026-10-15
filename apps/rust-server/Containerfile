@@ -1,0 +1,50 @@
+# Unity requires GLIBC_2.35 (UBI 9 has 2.34); SteamCMD needs a 32-bit
+# loader (absent from UBI 10). Debian supplies both without a second image
+# or a foreign libc. Renovate tracks this version and digest.
+FROM debian:13.6-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132 AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates python3 tini lib32gcc-s1 lib32stdc++6 libatomic1 libcurl4t64 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /data /opt/rust \
+    && chgrp 0 /data && chmod 2770 /data
+
+FROM runtime AS build
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3-venv curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt /tmp/requirements.txt
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --only-binary=:all: \
+        --require-hashes -r /tmp/requirements.txt
+# Valve's bootstrap URL is unversioned: a changed archive fails closed until
+# this checksum is reviewed. SteamCMD updates its writable copy at install time.
+ARG STEAMCMD_SHA256=cebf0046bfd08cf45da6bc094ae47aa39ebf4155e5ede41373b579b8f1071e7c
+RUN curl --fail --location --retry 3 --connect-timeout 15 --max-time 180 \
+        https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz \
+        -o /tmp/steamcmd.tar.gz \
+    && echo "${STEAMCMD_SHA256}  /tmp/steamcmd.tar.gz" | sha256sum -c - \
+    && mkdir /opt/steamcmd \
+    && tar -xzf /tmp/steamcmd.tar.gz -C /opt/steamcmd
+COPY rust_server.py tests/ /tmp/tests/
+RUN cd /tmp/tests && /opt/venv/bin/python -m unittest discover -v
+RUN /opt/venv/bin/pip uninstall -y pip
+
+FROM runtime
+COPY --from=build /opt/venv /opt/venv
+COPY --from=build /opt/steamcmd /opt/steamcmd
+COPY rust_server.py server.cfg /opt/rust/
+COPY --chmod=0755 rust-server /usr/local/bin/rust-server
+ENV HOME=/data/home \
+    PATH=/opt/venv/bin:$PATH \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+LABEL org.opencontainers.image.title="Rust dedicated server" \
+    org.opencontainers.image.description="Facepunch Rust launcher for arbitrary-UID OpenShift workloads; game installed separately via SteamCMD" \
+    org.opencontainers.image.source="https://github.com/igou-io/igou-containers"
+WORKDIR /data
+USER 1001:0
+EXPOSE 28015/udp 28017/udp
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/rust-server"]
+CMD ["run"]
