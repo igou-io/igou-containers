@@ -44,6 +44,20 @@ class RuntimeTests(unittest.TestCase):
             with self.assertRaises(server.Error):
                 server.configure(Path("/tmp"))
 
+    def test_explicit_config_mount_replaces_existing_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            source = data / "mounted-server.cfg"
+            source.write_text('server.hostname "GitOps"\n')
+            config = data / "rust/server/homelab/cfg/server.cfg"
+            config.parent.mkdir(parents=True)
+            config.write_text('server.hostname "Old"\n')
+            with patch.dict(os.environ, {"SERVER_IDENTITY": "homelab", "SERVER_CONFIG": str(source)}):
+                server.configure(data)
+                server.configure(data)
+            self.assertTrue(config.is_symlink())
+            self.assertEqual(config.read_text(), source.read_text())
+
     def test_interrupted_install_cannot_launch_partial_game(self):
         with tempfile.TemporaryDirectory() as directory:
             data = Path(directory)
