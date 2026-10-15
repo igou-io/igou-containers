@@ -26,7 +26,8 @@ Steam, outside the image's dependency scanning and digest pinning.
 Reserve roughly 4 CPUs, 12 GiB RAM and 50 GiB of SSD-backed persistent storage
 for the default small map; actual requirements grow with map size and players.
 The volume must permit the assigned UID to write through GID 0. Kubernetes
-should set `fsGroup` according to its storage/SCC policy.
+should set `fsGroup` according to its storage/SCC policy. The data volume must
+allow execution of the installed game and SteamCMD.
 
 Create a secret file outside the checkout; use a random password of at least
 16 printable non-space characters (64 hex characters recommended). Mount it
@@ -61,6 +62,9 @@ a final save. Use a container/Kubernetes termination grace of **at least 120
 seconds** for the default 90-second `STOP_TIMEOUT`. Tini runs as PID 1
 and reaps adopted Steam/crash-handler processes. A data-volume lock prevents
 another launcher or maintenance process from modifying a running installation.
+The tested game build exits with status 137 even after a successful WebRCON
+`quit` without an engine stop signal. The launcher preserves that native exit
+status; use save/shutdown logs and a restored world to verify completion.
 
 The password is read from `RCON_PASSWORD_FILE`, or optionally `RCON_PASSWORD`.
 It is removed from the child's environment and filtered from captured game

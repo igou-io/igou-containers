@@ -35,7 +35,10 @@ try:
     deadline = time.monotonic() + 10
     while not Path("/data/ready").exists():
         if time.monotonic() > deadline or process.poll() is not None:
-            raise RuntimeError("fake game failed to start")
+            if process.poll() is None:
+                process.kill()
+            output, _ = process.communicate(timeout=5)
+            raise RuntimeError("fake game failed to start: " + output)
         time.sleep(.05)
     conflict = subprocess.run(["rust-server", "update"], capture_output=True, text=True)
     assert conflict.returncode != 0 and "holds the data lock" in conflict.stderr
