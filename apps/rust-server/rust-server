@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /opt/venv/bin/python /opt/rust/rust_server.py "$@"

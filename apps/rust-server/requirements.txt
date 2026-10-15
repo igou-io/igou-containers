@@ -1,0 +1,4 @@
+python-a2s==1.4.2 \
+    --hash=sha256:c0ff89b978147db62ed102789bf6cf4693c18b328e96edc6575e6b17edf826be
+websocket-client==1.9.2 \
+    --hash=sha256:e1a673830a9c7bfa47b1cd3d5e4178f4c9651d80a4eab02c9c23a1c3ec6250ce

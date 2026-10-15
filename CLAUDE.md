@@ -21,6 +21,22 @@ Apps that can't build for all default platforms declare their own in an `apps/<a
 
 ## Current Apps
 
+### rust-server
+
+Facepunch Rust dedicated server on Debian 13 slim: the current Unity player
+requires glibc 2.35 (UBI 9 has 2.34), and SteamCMD needs a 32-bit loader (removed
+from UBI 10). Python provides a small lifecycle
+wrapper, WebRCON administration and A2S readiness. Runs as an arbitrary UID with
+GID 0 and a read-only root filesystem; all writable state lives under `/data`.
+Game files are downloaded on first use and updated only by explicit maintenance
+commands. SIGTERM saves and quits through loopback WebRCON, with bounded signal
+fallback. `linux/amd64` only. See `apps/rust-server/README.md` for build and
+operating commands.
+
+**Dependencies managed by Renovate:** Debian image version/digest and hash-pinned
+`requirements.txt`. Valve's unversioned bootstrap archive is checksum-pinned;
+SteamCMD and the game update separately in persistent storage.
+
 ### hermes-agent-k8s
 
 Complete from-source build of the pinned `david-igou/hermes-agent` Kubernetes
