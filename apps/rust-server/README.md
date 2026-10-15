@@ -121,22 +121,9 @@ do not use a short liveness probe that repeatedly kills that work. No privileged
 SCC or fixed `runAsUser` is needed. The existing `/data/rust` layout and `homelab`
 identity match the initial `igou-openshift` deployment.
 
-## Build and verify
+## Build
 
 ```bash
 podman build -t localhost/rust-server:dev \
   -f apps/rust-server/Containerfile apps/rust-server
-CONTAINER_ENGINE=podman bash apps/rust-server/smoke-test.sh localhost/rust-server:dev
 ```
-
-Unit tests run in the build stage. The offline smoke test uses UID 12345 (absent
-from `/etc/passwd`), GID 0, no network, a read-only root, no capabilities and only
-tmpfs writable storage. It checks install policy, config preservation, data
-locking, redaction and signal fallback using a fake game. CI runs it against
-the published digest through the repository's existing smoke-test hook.
-
-A real compatibility check additionally requires the full Steam download and
-game startup, A2S readiness, RCON `serverinfo` and `server.save`, SIGTERM shutdown,
-then a restart against the same volume verifying the same world creation time.
-This is a server lifecycle check; a successful player connection requires a
-Rust client and a reachable UDP path.

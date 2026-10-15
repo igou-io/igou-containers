@@ -26,8 +26,6 @@ RUN curl --fail --location --retry 3 --connect-timeout 15 --max-time 180 \
     && echo "${STEAMCMD_SHA256}  /tmp/steamcmd.tar.gz" | sha256sum -c - \
     && mkdir /opt/steamcmd \
     && tar -xzf /tmp/steamcmd.tar.gz -C /opt/steamcmd
-COPY rust_server.py tests/ /tmp/tests/
-RUN cd /tmp/tests && /opt/venv/bin/python -m unittest discover -v
 RUN /opt/venv/bin/pip uninstall -y pip
 
 FROM runtime

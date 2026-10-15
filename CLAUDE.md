@@ -30,8 +30,8 @@ wrapper, WebRCON administration and A2S readiness. Runs as an arbitrary UID with
 GID 0 and a read-only root filesystem; all writable state lives under `/data`.
 Game files are downloaded on first use and updated only by explicit maintenance
 commands. SIGTERM saves and quits through loopback WebRCON, with bounded signal
-fallback. `linux/amd64` only. See `apps/rust-server/README.md` for operation and
-the hardened offline smoke test.
+fallback. `linux/amd64` only. See `apps/rust-server/README.md` for build and
+operating commands.
 
 **Dependencies managed by Renovate:** Debian image version/digest and hash-pinned
 `requirements.txt`. Valve's unversioned bootstrap archive is checksum-pinned;
