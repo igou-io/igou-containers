@@ -10,3 +10,8 @@ docker run --rm -i --read-only --tmpfs /tmp:rw \
     -e FIRECRAWL_API_KEY= \
     -e SEARXNG_URL=http://searxng.invalid \
     "${1:?Pass the image reference to test}" - < "$app_dir/smoke-test.py"
+
+# Exercise s6 initialization and the production UID remap on a fresh data volume.
+docker run --rm --network none --tmpfs /tmp:rw --tmpfs /run:rw,exec \
+    -e HERMES_UID=1000 -e HERMES_GID=1000 "$1" \
+    sh -c 'test "$(id -u)" = 1000 && test -w "$HERMES_HOME/logs" && hermes --version'

@@ -535,4 +535,5 @@ ENTRYPOINT [ "/opt/hermes/docker/entrypoint-dispatch.sh" ]
 CMD [ ]
 
 # Immutable images must include both adapters without a lazy installation.
-RUN /opt/hermes/.venv/bin/python -c "import firecrawl, kubernetes; from tools.environments.kubernetes import STARTER_SESSION_OBJECT; assert STARTER_SESSION_OBJECT"
+# Imports initialize state directories; give them the runtime user's ownership.
+RUN runuser -u hermes -- /opt/hermes/.venv/bin/python -c "import firecrawl, kubernetes; from tools.environments.kubernetes import STARTER_SESSION_OBJECT; assert STARTER_SESSION_OBJECT"

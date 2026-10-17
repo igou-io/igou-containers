@@ -29,6 +29,8 @@ bash apps/hermes-agent-k8s/smoke-test.sh hermes-agent-k8s:test
 The smoke test checks fork provenance, locked SDK versions, Kubernetes backend
 imports, and a Firecrawl extraction through the real SDK against a local HTTP
 fixture. The container filesystem is read-only and lazy installation is disabled.
+It also starts s6 on a fresh data volume without network access, remaps Hermes to
+UID 1000, and verifies writable logs and the CLI version.
 
 ## Publish and consume
 
