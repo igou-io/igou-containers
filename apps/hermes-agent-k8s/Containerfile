@@ -1,5 +1,5 @@
 # Build recipe owned by igou-containers, adapted from the fork at
-# 2eaf1e3e7906cb17af86d251e3f55474a14377ad. Source: source.env.
+# 94d956080df82759d0ce8a4f07000fdfc6e93f47. Source: source.env.
 # Retain Debian/s6 and the PM toolchain to match the fork runtime.
 # Kubernetes and Firecrawl are installed at build time from its uv.lock.
 # Debian 13 still ships SQLite 3.46.1, which contains the upstream WAL-reset
@@ -278,7 +278,8 @@ FROM runtime_base AS python_deps
 COPY pyproject.toml uv.lock ./
 RUN touch ./README.md
 RUN python3 -m pm.build_env --source /opt/hermes --python /usr/local/bin/python3 \
-    --out /opt/hermes/.venv --no-install-project --sealed \
+    --cache /opt/hermes/uv-cache \
+    --out /opt/hermes/.venv --no-install-project --sealed --record-selection \
     --extra all --extra messaging --extra otlp --extra anthropic --extra bedrock \
     --extra azure-identity --extra matrix --extra google-chat --extra kubernetes --extra firecrawl
 
@@ -534,4 +535,5 @@ ENTRYPOINT [ "/opt/hermes/docker/entrypoint-dispatch.sh" ]
 CMD [ ]
 
 # Immutable images must include both adapters without a lazy installation.
-RUN /opt/hermes/.venv/bin/python -c "import firecrawl, kubernetes; from tools.environments.kubernetes import STARTER_SESSION_OBJECT; assert STARTER_SESSION_OBJECT"
+# Imports initialize state directories; give them the runtime user's ownership.
+RUN runuser -u hermes -- /opt/hermes/.venv/bin/python -c "import firecrawl, kubernetes; from tools.environments.kubernetes import STARTER_SESSION_OBJECT; assert STARTER_SESSION_OBJECT"
