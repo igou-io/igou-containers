@@ -6,8 +6,11 @@ FROM ${UBI_IMAGE_MICRO} AS target
 # Build mcp-adc-exporter from source at a pinned tag
 FROM ${GO_TOOLSET_IMAGE} AS build
 
+# UBI forces GOTOOLCHAIN=local; use the patched toolchain pinned by go.mod.
+ENV GOTOOLCHAIN=auto
+
 # renovate: datasource=github-tags depName=david-igou/mcp-adc-exporter
-ARG MCP_ADC_EXPORTER_VERSION="v0.1.0"
+ARG MCP_ADC_EXPORTER_VERSION="v0.1.1"
 
 WORKDIR /opt/app-root/src
 RUN git clone --depth 1 --branch "${MCP_ADC_EXPORTER_VERSION}" https://github.com/david-igou/mcp-adc-exporter.git src && \
