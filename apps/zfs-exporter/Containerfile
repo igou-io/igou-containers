@@ -1,5 +1,5 @@
-ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:latest@sha256:a75ad754aa048d808dd3260243452f8c9a665831d0493b4c9d92f0c88fe2f8c3
-ARG UBI_IMAGE_MINIMAL=registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:552f8cc1ddb0bc9e411065c78499aa4dbc2c4ea9bd057aa0e6e44940db13acb5
+ARG UBI_IMAGE=registry.access.redhat.com/ubi10/ubi:latest@sha256:4debe04be3b15ff2861e3428cbfa42379a183b16787ca2b8cf124d7afd6e84a5
+ARG UBI_IMAGE_MINIMAL=registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:c769ab6615ab32d02d5b3d65ff2eae6bc668ba823e77f46b78a4181f54d17a27
 
 # ---------------------------------------------------------------------------
 # Fetch stage — download and checksum-verify the zfs_exporter release binary
