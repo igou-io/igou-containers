@@ -1,7 +1,7 @@
 # Unity requires GLIBC_2.35 (UBI 9 has 2.34); SteamCMD needs a 32-bit
 # loader (absent from UBI 10). Debian supplies both without a second image
 # or a foreign libc. Renovate tracks this version and digest.
-FROM debian:13.7-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS runtime
+FROM debian:13.7-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates python3 tini lib32gcc-s1 lib32stdc++6 libatomic1 libcurl4t64 \
