@@ -5,6 +5,14 @@
   ],
   "packageRules": [
     {
+      "description": "Python runtime images stay on 3.14; review a new minor explicitly.",
+      "matchDepNames": [
+        "python",
+        "docker.io/library/python"
+      ],
+      "allowedVersions": "/^(?:3\\.14\\.|3\\.14-)/"
+    },
+    {
       "matchManagers": ["pip_requirements"],
       "groupName": "python dependencies"
     },

@@ -6,7 +6,7 @@ arbitrary UID with GID 0. It needs one writable `/data` volume and writable
 changes, extra capabilities, panel, plugin loader or public RCON listener.
 The launcher is maintained here; Facepunch owns the game and its license.
 
-Debian **13 slim** supplies SteamCMD's 32-bit glibc/libstdc++ ABI and the game's
+The official **Python 3.14 / Debian 13 slim** image supplies SteamCMD's 32-bit glibc/libstdc++ ABI and the game's
 64-bit libraries. The actual October 2026 game download requires `GLIBC_2.35`
 in `UnityPlayer.so`; UBI 9 has glibc 2.34 and failed the real startup test.
 UBI 10 removed the 32-bit packages needed by SteamCMD. Python runs the lifecycle
