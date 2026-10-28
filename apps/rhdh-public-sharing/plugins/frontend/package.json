@@ -1,0 +1,39 @@
+{
+  "name": "@igou/plugin-public-sharing",
+  "version": "0.1.0",
+  "main": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "backstage": {
+    "role": "frontend-plugin",
+    "pluginId": "public-sharing"
+  },
+  "scalprum": {
+    "name": "igou.plugin-public-sharing",
+    "exposedModules": {
+      "PluginRoot": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "backstage-cli package build",
+    "export": "rhdh-cli plugin export"
+  },
+  "dependencies": {
+    "@backstage/core-plugin-api": "1.12.4",
+    "@backstage/core-components": "0.18.8",
+    "@material-ui/core": "4.12.4"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.2"
+  },
+  "devDependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.30.2"
+  }
+}

@@ -1,0 +1,18 @@
+FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:2aaafde451711a680841682b1737bc7f749bfeba3ebfd5cb7f7193489978bd59 AS build
+USER 0
+WORKDIR /opt/plugin
+COPY package.json yarn.lock backstage.json tsconfig.json ./
+COPY plugins ./plugins
+# Bootstrap the package manager pinned in package.json; the lockfile owns all dependencies.
+RUN npm install --global "$(node -p 'require("./package.json").packageManager')" && \
+    yarn install --frozen-lockfile --ignore-scripts --ignore-engines --network-timeout 120000 && \
+    yarn typecheck && yarn test && yarn build && \
+    yarn workspace @igou/plugin-public-sharing-backend export --no-build --no-install && \
+    yarn --cwd plugins/backend/dist-dynamic install --production --ignore-scripts --ignore-engines && \
+    yarn workspace @igou/plugin-public-sharing export && \
+    yarn cache clean && npm cache clean --force && rm -rf node_modules
+
+# A dynamic-plugin OCI artifact contains package data, not a running service.
+FROM scratch
+COPY --from=build /opt/plugin/plugins/frontend/dist-dynamic /igou-plugin-public-sharing
+COPY --from=build /opt/plugin/plugins/backend/dist-dynamic /igou-plugin-public-sharing-backend

@@ -1,0 +1,40 @@
+{
+  "name": "rhdh-public-sharing",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "plugins/*"
+  ],
+  "scripts": {
+    "build": "tsc && npm run build --workspaces",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "export": "npm run export --workspaces"
+  },
+  "resolutions": {
+    "@azure/msal-node": "7.1.2",
+    "@remix-run/router": "1.23.4",
+    "adm-zip": "0.6.1",
+    "koa": "2.16.4",
+    "tar": "7.5.22",
+    "underscore": "1.13.8",
+    "undici": "7.30.1",
+    "ws": "8.22.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@backstage/cli": "0.34.2",
+    "@red-hat-developer-hub/cli": "1.11.4",
+    "@testing-library/react": "16.3.0",
+    "@testing-library/dom": "10.4.1",
+    "@types/express": "4.17.25",
+    "@types/node": "22.19.0",
+    "@types/react": "18.3.27",
+    "@types/react-dom": "18.3.7",
+    "jsdom": "26.1.0",
+    "typescript": "5.8.3",
+    "vitest": "4.1.0",
+    "yarn": "1.22.22"
+  }
+}
