@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:2aaafde451711a680841682b1737bc7f749bfeba3ebfd5cb7f7193489978bd59 AS build
+FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:c1b79382a645eb97124182a2f6c396ba3c7680e2b2dcf84443c296f41a644bf6 AS build
 USER 0
 WORKDIR /opt/plugin
 COPY package.json yarn.lock backstage.json tsconfig.json ./
