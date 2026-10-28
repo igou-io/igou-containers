@@ -32,6 +32,11 @@ The final image contains two packages at `/igou-plugin-public-sharing` and
 The monorepo's existing container workflow builds this image on pull requests
 and publishes commit tags on `main`. The Containerfile runs tests before
 exporting either plugin. Both packages must use the same image revision.
+RHDH 1.10 extracts only the first OCI layer, so both packages must be copied
+into the final image together. CI runs `smoke-test.sh` against the published
+image to verify this layout, the backend entry point, and its private dependencies.
+The artifact publishes for `linux/amd64`, which RHDH 1.10 explicitly requests
+when downloading plugins. Its payload contains JavaScript and frontend assets.
 
 ## Configuration
 

@@ -12,7 +12,12 @@ RUN npm install --global "$(node -p 'require("./package.json").packageManager')"
     yarn workspace @igou/plugin-public-sharing export && \
     yarn cache clean && npm cache clean --force && rm -rf node_modules
 
+# RHDH 1.10's OCI downloader reads only the first layer. Stage both packages
+# together so the final COPY produces one layer containing the complete artifact.
+RUN mkdir /export && \
+    cp -a plugins/frontend/dist-dynamic /export/igou-plugin-public-sharing && \
+    cp -a plugins/backend/dist-dynamic /export/igou-plugin-public-sharing-backend
+
 # A dynamic-plugin OCI artifact contains package data, not a running service.
 FROM scratch
-COPY --from=build /opt/plugin/plugins/frontend/dist-dynamic /igou-plugin-public-sharing
-COPY --from=build /opt/plugin/plugins/backend/dist-dynamic /igou-plugin-public-sharing-backend
+COPY --from=build /export/ /
