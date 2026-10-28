@@ -12,6 +12,9 @@
     "test": "vitest run",
     "export": "npm run export --workspaces"
   },
+  "resolutions": {
+    "tar": "7.5.22"
+  },
   "devDependencies": {
     "@backstage/cli": "0.34.2",
     "@red-hat-developer-hub/cli": "1.11.4",
