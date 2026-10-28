@@ -22,6 +22,10 @@ podman build -t localhost/rhdh-public-sharing:dev -f Containerfile .
 
 The pinned RHDH CLI exports Scalprum assets. CLI 2.x produces a different
 frontend format and must not be substituted without testing the RHDH host.
+Root Yarn resolutions pin security fixes in the CLI's transitive dependencies
+and frontend libraries while retaining that exporter version. Changes to these
+overrides must pass type checking, tests, package builds, and both dynamic
+exports using the commands above.
 The final image contains two packages at `/igou-plugin-public-sharing` and
 `/igou-plugin-public-sharing-backend`. It has no entrypoint.
 
