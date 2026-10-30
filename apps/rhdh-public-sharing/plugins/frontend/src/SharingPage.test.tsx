@@ -12,7 +12,13 @@ const ready = () => ({
   backends: [{ name: 'web', protocols: ['HTTP'], ready: true, reason: '' }],
   freePorts: { TCP: [27010], UDP: [27018] },
   shares: [],
-  limits: { maxLeaseHours: 72, maxActive: 8, maxPerOwner: 3, active: 0, ownActive: 0 },
+  limits: {
+    maxLeaseHours: 72,
+    maxActive: 8,
+    maxPerOwner: 3,
+    active: 0,
+    ownActive: 0,
+  },
 });
 afterEach(() => {
   cleanup();
@@ -21,7 +27,9 @@ afterEach(() => {
 
 describe('runtime sharing page', () => {
   it('offers connection without displaying a stale form', async () => {
-    const request = vi.fn(async () => ({ connected: false })) as unknown as SharingRequest;
+    const request = vi.fn(async () => ({
+      connected: false,
+    })) as unknown as SharingRequest;
     render(<SharingPageContent request={request} />);
     await screen.findByText('Connect AAP');
     expect(screen.queryByText('Share service')).toBeNull();
@@ -33,7 +41,11 @@ describe('runtime sharing page', () => {
     render(<SharingPageContent request={request} />);
     await screen.findByText(/AAP account: caller/);
     expect(
-      (screen.getByRole('button', { name: 'Share service' }) as HTMLButtonElement).disabled
+      (
+        screen.getByRole('button', {
+          name: 'Share service',
+        }) as HTMLButtonElement
+      ).disabled
     ).toBe(true);
     fireEvent.mouseDown(screen.getByLabelText('Service'));
     expect(screen.getByRole('option', { name: /web.*offline/ }).getAttribute('aria-disabled')).toBe(
@@ -43,13 +55,21 @@ describe('runtime sharing page', () => {
   it('launches once with selected survey inputs', async () => {
     const request = vi.fn(async (path: string) =>
       path === '/shares'
-        ? { id: 123, url: 'https://aap.example.com/jobs/123', status: 'successful' }
+        ? {
+            id: 123,
+            url: 'https://aap.example.com/jobs/123',
+            status: 'successful',
+          }
         : ready()
     ) as unknown as SharingRequest;
     render(<SharingPageContent request={request} />);
     await screen.findByText(/AAP account: caller/);
     fireEvent.mouseDown(screen.getByLabelText('Service'));
     fireEvent.click(screen.getByRole('option', { name: 'web' }));
+    fireEvent.change(screen.getByLabelText('Endpoint subdomain'), {
+      target: { value: 'demo' },
+    });
+    expect(screen.getByText('demo.sharing.igou.io')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Share service' }));
     await screen.findByText('AAP job 123');
     const calls = vi.mocked(request).mock.calls.filter(([p]) => p === '/shares');
@@ -59,7 +79,33 @@ describe('runtime sharing page', () => {
       backend: 'web',
       protocol: 'HTTP',
       leaseHours: 2,
+      subdomain: 'demo',
     });
+  });
+  it('disables creation for invalid or reserved subdomains', async () => {
+    const request = vi.fn(async () => ready()) as unknown as SharingRequest;
+    render(<SharingPageContent request={request} />);
+    await screen.findByText(/AAP account: caller/);
+    fireEvent.mouseDown(screen.getByLabelText('Service'));
+    fireEvent.click(screen.getByRole('option', { name: 'web' }));
+    const button = screen.getByRole('button', {
+      name: 'Share service',
+    }) as HTMLButtonElement;
+    for (const value of ['ps-123', 'demo.example', '-demo', 'Demo']) {
+      fireEvent.change(screen.getByLabelText('Endpoint subdomain'), {
+        target: { value },
+      });
+      expect(button.disabled).toBe(true);
+    }
+    fireEvent.change(screen.getByLabelText('Endpoint subdomain'), {
+      target: { value: '' },
+    });
+    expect(button.disabled).toBe(false);
+    for (const value of ['www', 'gotify']) {
+      fireEvent.change(screen.getByLabelText('Endpoint subdomain'), { target: { value } });
+      expect(button.disabled).toBe(false);
+      expect(screen.getByText(`${value}.sharing.igou.io`)).toBeTruthy();
+    }
   });
   it('refreshes automatically and removes stale controls on a runtime failure', async () => {
     const interval = vi.spyOn(window, 'setInterval');

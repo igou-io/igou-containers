@@ -252,7 +252,8 @@ export class SharingService {
     if (!this.sessions.has(user)) return { connected: false as const };
     const s = await this.session(user);
     await this.template(s);
-    return { connected: true as const, username: s.username, ...(await this.runtime(s)) };
+    const { occupiedHostnames: _occupiedHostnames, ...state } = await this.runtime(s);
+    return { connected: true as const, username: s.username, ...state };
   }
 
   async launch(user: string, input: unknown) {
@@ -281,7 +282,10 @@ export class SharingService {
     s.jobs.add(job.id);
     // Bound process memory for a long-running browser session.
     if (s.jobs.size > 100) s.jobs.delete(s.jobs.values().next().value!);
-    return { id: job.id, url: `${this.aap}/execution/jobs/playbook/${job.id}/details` };
+    return {
+      id: job.id,
+      url: `${this.aap}/execution/jobs/playbook/${job.id}/details`,
+    };
   }
 
   async job(user: string, id: number) {

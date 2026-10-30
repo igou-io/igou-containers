@@ -21,6 +21,7 @@ import {
   TableHead,
   TableRow,
   Typography,
+  TextField,
 } from '@material-ui/core';
 
 type Protocol = 'HTTP' | 'TCP' | 'UDP';
@@ -30,7 +31,12 @@ type State = {
   observedAt: string;
   gatewayReady: boolean;
   httpsAvailable: boolean;
-  backends: { name: string; protocols: Protocol[]; ready: boolean; reason: string }[];
+  backends: {
+    name: string;
+    protocols: Protocol[];
+    ready: boolean;
+    reason: string;
+  }[];
   freePorts: { TCP: number[]; UDP: number[] };
   limits: {
     maxLeaseHours: number;
@@ -59,6 +65,7 @@ export function SharingPageContent({ request }: { request: SharingRequest }) {
   const [protocol, setProtocol] = useState<Protocol>('HTTP');
   const [port, setPort] = useState<number | ''>('');
   const [lease, setLease] = useState(2);
+  const [subdomain, setSubdomain] = useState('');
   const [remove, setRemove] = useState('');
   const [job, setJob] = useState<Job>();
   const sequence = useRef(0);
@@ -145,7 +152,9 @@ export function SharingPageContent({ request }: { request: SharingRequest }) {
     const popup = window.open('', 'public-sharing-aap', 'popup,width=720,height=760');
     setBusy(true);
     try {
-      const { url } = await request<{ url: string }>('/oauth/start', { method: 'POST' });
+      const { url } = await request<{ url: string }>('/oauth/start', {
+        method: 'POST',
+      });
       if (popup) popup.location.href = url;
       else setError('Allow the AAP sign-in popup, then connect again');
     } catch (e) {
@@ -163,7 +172,15 @@ export function SharingPageContent({ request }: { request: SharingRequest }) {
         await request<Job>('/shares', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action, shareId, backend, protocol, port, leaseHours: lease }),
+          body: JSON.stringify({
+            action,
+            shareId,
+            backend,
+            protocol,
+            port,
+            leaseHours: lease,
+            subdomain,
+          }),
         })
       );
       setRemove('');
@@ -196,13 +213,22 @@ export function SharingPageContent({ request }: { request: SharingRequest }) {
     state &&
     (state.limits.active >= state.limits.maxActive ||
       state.limits.ownActive >= state.limits.maxPerOwner);
+  const subdomainError =
+    subdomain === ''
+      ? ''
+      : !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)
+      ? 'Use 1-63 lowercase letters, digits or internal hyphens.'
+      : subdomain.startsWith('ps-')
+      ? 'This subdomain is reserved.'
+      : '';
   const canCreate =
     state &&
     selected?.ready &&
     state.gatewayReady &&
     !atLimit &&
     selected.protocols.includes(protocol) &&
-    (protocol === 'HTTP' ? state.httpsAvailable : port !== '');
+    (protocol === 'HTTP' ? state.httpsAvailable : port !== '') &&
+    !subdomainError;
 
   return (
     <>
@@ -275,6 +301,21 @@ export function SharingPageContent({ request }: { request: SharingRequest }) {
               </Typography>
             )}
             <Box display="flex" flexWrap="wrap" style={{ gap: 24 }}>
+              <TextField
+                id="sharing-subdomain"
+                label="Endpoint subdomain"
+                value={subdomain}
+                onChange={(e) => setSubdomain(e.target.value)}
+                disabled={disabled}
+                inputProps={{ maxLength: 63 }}
+                error={Boolean(subdomainError)}
+                helperText={
+                  subdomainError ||
+                  (subdomain
+                    ? `${subdomain}.sharing.igou.io`
+                    : 'Optional; blank generates ps-<job>.sharing.igou.io')
+                }
+              />
               <FormControl style={{ minWidth: 220 }} disabled={disabled}>
                 <InputLabel id="sharing-backend">Service</InputLabel>
                 <Select

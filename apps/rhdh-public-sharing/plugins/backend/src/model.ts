@@ -1,6 +1,23 @@
 export const ID = 'sharing.igou.io/id';
 export const OWNER = 'sharing.igou.io/owner';
 export const EXPIRY = 'sharing.igou.io/expires-at';
+export const HOSTNAME = 'sharing.igou.io/hostname';
+
+function validSubdomain(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(value) &&
+    !value.startsWith('ps-')
+  );
+}
+
+function hostnameMatches(hostname: string, pattern: string) {
+  return (
+    pattern === '*' ||
+    hostname === pattern ||
+    (pattern.startsWith('*.') && hostname.endsWith(pattern.slice(1)))
+  );
+}
 export type Protocol = 'HTTP' | 'TCP' | 'UDP';
 export type KubeObject = {
   kind: string;
@@ -199,7 +216,8 @@ export function snapshot(
           ? (o.spec?.hostnames ?? []).map((h: string) => `https://${h}`)
           : (o.spec?.parentRefs ?? []).map((p: any) => {
               const port = p.sectionName?.split('-').pop();
-              return `${o.kind === 'UDPRoute' ? 'udp' : 'tcp'}://${id}.igou.io:${port}`;
+              const hostname = o.metadata.annotations?.[HOSTNAME] ?? `${id}.igou.io`;
+              return `${o.kind === 'UDPRoute' ? 'udp' : 'tcp'}://${hostname}:${port}`;
             })
       );
       return {
@@ -217,6 +235,19 @@ export function snapshot(
     .sort((a, b) => a.id.localeCompare(b.id));
   return {
     observedAt: now.toISOString(),
+    occupiedHostnames: objects
+      .filter(
+        (o) =>
+          o.kind.endsWith('Route') &&
+          (o.spec?.parentRefs ?? []).some(
+            (p: any) =>
+              p.name === 'public' && (p.namespace ?? o.metadata.namespace) === 'nginx-gateway'
+          )
+      )
+      .flatMap((o) => [
+        ...(o.metadata.annotations?.[HOSTNAME] ? [o.metadata.annotations[HOSTNAME]] : []),
+        ...(o.kind === 'HTTPRoute' ? (o.spec?.hostnames?.length ? o.spec.hostnames : ['*']) : []),
+      ]) as string[],
     backends,
     shares,
     gatewayReady,
@@ -252,6 +283,16 @@ export function launchVariables(body: any, state: ReturnType<typeof snapshot>, n
       .replace(/\.\d{3}Z$/, 'Z');
   }
   if (action === 'create') {
+    const subdomain = body.subdomain ?? '';
+    if (subdomain !== '') {
+      if (!validSubdomain(subdomain))
+        throw new Error(
+          'Choose a non-reserved subdomain of 1-63 lowercase letters, digits or internal hyphens'
+        );
+      if (state.occupiedHostnames.some((h) => hostnameMatches(`${subdomain}.sharing.igou.io`, h)))
+        throw new Error('Subdomain is already in use; choose another name');
+      variables.public_share_subdomain = subdomain;
+    }
     const backend = state.backends.find((b) => b.name === body.backend);
     if (!backend?.ready || !state.gatewayReady) throw new Error('Backend or Gateway is not ready');
     if (

@@ -3,6 +3,7 @@ import {
   ID,
   OWNER,
   EXPIRY,
+  HOSTNAME,
   launchVariables,
   parseCatalog,
   snapshot,
@@ -42,7 +43,10 @@ export function fixture() {
     })),
     endpoints: ['web', 'game'].map((name) => ({
       kind: 'EndpointSlice',
-      metadata: { name, labels: { 'kubernetes.io/service-name': `${name}-public` } },
+      metadata: {
+        name,
+        labels: { 'kubernetes.io/service-name': `${name}-public` },
+      },
       endpoints: [{ conditions: { ready: true } }],
     })),
     objects: [] as KubeObject[],
@@ -79,7 +83,13 @@ export function resource(id = 'ps-123', owner = 'aap-user-7', kind = 'UDPRoute')
       annotations: { [OWNER]: owner, [EXPIRY]: '2026-10-28T17:00:00Z' },
     },
     spec: {
-      parentRefs: [{ name: 'public', namespace: 'nginx-gateway', sectionName: 'udp-27018' }],
+      parentRefs: [
+        {
+          name: 'public',
+          namespace: 'nginx-gateway',
+          sectionName: 'udp-27018',
+        },
+      ],
     },
   };
 }
@@ -153,7 +163,10 @@ describe('runtime sharing menu', () => {
     data.proxyEndpoints = [
       {
         kind: 'EndpointSlice',
-        metadata: { name: 'proxy', labels: { 'kubernetes.io/service-name': 'ocp-ps-123-bridge' } },
+        metadata: {
+          name: 'proxy',
+          labels: { 'kubernetes.io/service-name': 'ocp-ps-123-bridge' },
+        },
         endpoints: [{ conditions: { ready: true } }],
       },
     ];
@@ -162,7 +175,114 @@ describe('runtime sharing menu', () => {
 });
 
 describe('submit-time validation', () => {
-  const body = { action: 'create', backend: 'game', protocol: 'UDP', port: 27018, leaseHours: 2 };
+  it.each(['www', 'gotify'])(
+    'allows root application label %s in the sharing namespace',
+    (subdomain) => {
+      expect(
+        launchVariables(
+          { action: 'create', backend: 'web', protocol: 'HTTP', leaseHours: 2, subdomain },
+          snapshot(fixture(), now),
+          now
+        )
+      ).toMatchObject({ public_share_subdomain: subdomain });
+    }
+  );
+  it('preserves legacy endpoints and permits their renewal and removal', () => {
+    const data = fixture();
+    data.objects = [resource()];
+    const state = snapshot(data, now);
+    expect(state.shares[0].endpoints).toEqual(['udp://ps-123.igou.io:27018']);
+    for (const action of ['extend', 'remove']) {
+      expect(
+        launchVariables({ action, shareId: 'ps-123', leaseHours: 2 }, state, now)
+      ).toMatchObject({ public_share_action: action, public_share_id: 'ps-123' });
+    }
+  });
+  it('passes an optional custom subdomain without changing share identity', () => {
+    const state = snapshot(fixture(), now);
+    const input = {
+      action: 'create',
+      backend: 'web',
+      protocol: 'HTTP',
+      leaseHours: 2,
+    };
+    expect(launchVariables({ ...input, subdomain: 'demo' }, state, now)).toMatchObject({
+      public_share_subdomain: 'demo',
+      public_share_backend: 'web',
+    });
+    expect(launchVariables(input, state, now)).not.toHaveProperty('public_share_subdomain');
+    expect(launchVariables({ ...input, subdomain: '' }, state, now)).not.toHaveProperty(
+      'public_share_subdomain'
+    );
+  });
+  it.each(['ps-123', 'Demo', '-demo', 'demo-', 'demo.example', '*', 'a'.repeat(64), ['demo']])(
+    'rejects an invalid or reserved custom subdomain %j',
+    (subdomain) => {
+      expect(() =>
+        launchVariables(
+          {
+            action: 'create',
+            backend: 'web',
+            protocol: 'HTTP',
+            leaseHours: 2,
+            subdomain,
+          },
+          snapshot(fixture(), now),
+          now
+        )
+      ).toThrow('subdomain');
+    }
+  );
+  it.each(['demo.sharing.igou.io', '*.sharing.igou.io', '*.igou.io', undefined])(
+    'rejects a hostname claimed by another owner or catch-all route %j',
+    (hostname) => {
+      const data = fixture();
+      const route = resource('ps-456', 'aap-user-8', 'HTTPRoute');
+      route.spec.parentRefs[0].sectionName = 'https';
+      route.spec.hostnames = hostname ? [hostname] : [];
+      data.objects = [route];
+      expect(() =>
+        launchVariables(
+          {
+            action: 'create',
+            backend: 'web',
+            protocol: 'HTTP',
+            leaseHours: 2,
+            subdomain: 'demo',
+          },
+          snapshot(data, now),
+          now
+        )
+      ).toThrow('already in use');
+    }
+  );
+  it('reserves custom TCP/UDP endpoint names and displays them', () => {
+    const data = fixture();
+    const route = resource();
+    route.metadata.annotations![HOSTNAME] = 'demo.sharing.igou.io';
+    data.objects = [route];
+    expect(snapshot(data, now).shares[0].endpoints).toEqual(['udp://demo.sharing.igou.io:27018']);
+    expect(() =>
+      launchVariables(
+        {
+          action: 'create',
+          backend: 'web',
+          protocol: 'HTTP',
+          leaseHours: 2,
+          subdomain: 'demo',
+        },
+        snapshot(data, now),
+        now
+      )
+    ).toThrow('already in use');
+  });
+  const body = {
+    action: 'create',
+    backend: 'game',
+    protocol: 'UDP',
+    port: 27018,
+    leaseHours: 2,
+  };
   it('emits only the survey allowlist with server-computed expiration', () => {
     expect(
       launchVariables(
@@ -234,7 +354,11 @@ describe('submit-time validation', () => {
     expect(() =>
       parseCatalog({
         public_share_backends: {
-          unsafe: { service: 'x', tailnet_fqdn: 'internal.example.com', ports: { HTTP: 80 } },
+          unsafe: {
+            service: 'x',
+            tailnet_fqdn: 'internal.example.com',
+            ports: { HTTP: 80 },
+          },
         },
       })
     ).toThrow();
