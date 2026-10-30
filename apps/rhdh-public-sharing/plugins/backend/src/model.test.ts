@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest';
 import {
   ID,
   OWNER,
@@ -8,118 +8,114 @@ import {
   parseCatalog,
   snapshot,
   type KubeObject,
-} from "./model";
+} from './model';
 
-export const now = new Date("2026-10-28T15:00:00Z");
+export const now = new Date('2026-10-28T15:00:00Z');
 export function fixture() {
   return {
     catalog: parseCatalog({
       public_share_backends: {
         web: {
-          service: "web-public",
-          tailnet_fqdn: "ocp-public-web.example.ts.net",
+          service: 'web-public',
+          tailnet_fqdn: 'ocp-public-web.example.ts.net',
           ports: { HTTP: 8080 },
         },
         game: {
-          service: "game-public",
-          tailnet_fqdn: "ocp-public-game.example.ts.net",
+          service: 'game-public',
+          tailnet_fqdn: 'ocp-public-game.example.ts.net',
           ports: { UDP: 27020 },
         },
       },
     }),
     userId: 7,
-    services: ["web", "game"].map((name, i) => ({
-      kind: "Service",
+    services: ['web', 'game'].map((name, i) => ({
+      kind: 'Service',
       metadata: {
         name: `${name}-public`,
-        annotations: { "tailscale.com/hostname": `ocp-public-${name}` },
+        annotations: { 'tailscale.com/hostname': `ocp-public-${name}` },
       },
       spec: {
-        type: "LoadBalancer",
-        loadBalancerClass: "tailscale",
+        type: 'LoadBalancer',
+        loadBalancerClass: 'tailscale',
         selector: { app: name },
-        ports: [{ port: i ? 27020 : 8080, protocol: i ? "UDP" : "TCP" }],
+        ports: [{ port: i ? 27020 : 8080, protocol: i ? 'UDP' : 'TCP' }],
       },
     })),
-    endpoints: ["web", "game"].map((name) => ({
-      kind: "EndpointSlice",
+    endpoints: ['web', 'game'].map((name) => ({
+      kind: 'EndpointSlice',
       metadata: {
         name,
-        labels: { "kubernetes.io/service-name": `${name}-public` },
+        labels: { 'kubernetes.io/service-name': `${name}-public` },
       },
       endpoints: [{ conditions: { ready: true } }],
     })),
     objects: [] as KubeObject[],
     proxyEndpoints: [] as KubeObject[],
     gateway: {
-      kind: "Gateway",
-      metadata: { name: "public", generation: 1 },
+      kind: 'Gateway',
+      metadata: { name: 'public', generation: 1 },
       spec: {
         listeners: [
-          { name: "https", protocol: "HTTPS", port: 443 },
-          { name: "tcp-27010", protocol: "TCP", port: 27010 },
-          { name: "udp-27018", protocol: "UDP", port: 27018 },
-          { name: "udp-27019", protocol: "UDP", port: 27019 },
+          { name: 'https', protocol: 'HTTPS', port: 443 },
+          { name: 'tcp-27010', protocol: 'TCP', port: 27010 },
+          { name: 'udp-27018', protocol: 'UDP', port: 27018 },
+          { name: 'udp-27019', protocol: 'UDP', port: 27019 },
         ],
       },
       status: {
-        conditions: ["Accepted", "Programmed"].map((type) => ({
+        conditions: ['Accepted', 'Programmed'].map((type) => ({
           type,
-          status: "True",
+          status: 'True',
           observedGeneration: 1,
         })),
       },
     },
   };
 }
-export function resource(
-  id = "ps-123",
-  owner = "aap-user-7",
-  kind = "UDPRoute"
-): KubeObject {
+export function resource(id = 'ps-123', owner = 'aap-user-7', kind = 'UDPRoute'): KubeObject {
   return {
     kind,
     metadata: {
       name: `${id}-udp`,
-      namespace: "public-services",
+      namespace: 'public-services',
       generation: 1,
-      labels: { [ID]: id, "app.kubernetes.io/managed-by": "public-share-aap" },
-      annotations: { [OWNER]: owner, [EXPIRY]: "2026-10-28T17:00:00Z" },
+      labels: { [ID]: id, 'app.kubernetes.io/managed-by': 'public-share-aap' },
+      annotations: { [OWNER]: owner, [EXPIRY]: '2026-10-28T17:00:00Z' },
     },
     spec: {
       parentRefs: [
         {
-          name: "public",
-          namespace: "nginx-gateway",
-          sectionName: "udp-27018",
+          name: 'public',
+          namespace: 'nginx-gateway',
+          sectionName: 'udp-27018',
         },
       ],
     },
   };
 }
 
-describe("runtime sharing menu", () => {
-  it("shows approved backends but disables zero-endpoint workloads", () => {
+describe('runtime sharing menu', () => {
+  it('shows approved backends but disables zero-endpoint workloads', () => {
     const data = fixture();
     data.endpoints = [];
     expect(snapshot(data, now).backends.every((b) => !b.ready)).toBe(true);
   });
-  it("does not accept a hostname replacement or mismatched backend port", () => {
+  it('does not accept a hostname replacement or mismatched backend port', () => {
     const data = fixture();
     data.services[0].spec.ports[0].port = 9999;
-    data.services[1].metadata.annotations["tailscale.com/hostname"] = "wrong";
+    data.services[1].metadata.annotations['tailscale.com/hostname'] = 'wrong';
     expect(snapshot(data, now).backends.every((b) => !b.ready)).toBe(true);
   });
-  it("counts all owners against quota but only exposes the caller’s shares", () => {
+  it('counts all owners against quota but only exposes the caller’s shares', () => {
     const data = fixture();
-    data.objects = [resource(), resource("ps-456", "aap-user-8")];
+    data.objects = [resource(), resource('ps-456', 'aap-user-8')];
     const state = snapshot(data, now);
-    expect(state.shares.map((s) => s.id)).toEqual(["ps-123"]);
+    expect(state.shares.map((s) => s.id)).toEqual(['ps-123']);
     expect(state.limits.active).toBe(2);
     expect(state.limits.ownActive).toBe(1);
     expect(state.freePorts.UDP).toEqual([27019]);
   });
-  it("reserves ports taken by unmanaged or wildcard routes", () => {
+  it('reserves ports taken by unmanaged or wildcard routes', () => {
     const data = fixture();
     const r = resource();
     r.metadata.labels = {};
@@ -127,162 +123,152 @@ describe("runtime sharing menu", () => {
     data.objects = [r];
     expect(snapshot(data, now).freePorts.UDP).toEqual([]);
   });
-  it("honors Gateway attached routes even if the route is outside the listing", () => {
+  it('honors Gateway attached routes even if the route is outside the listing', () => {
     const data = fixture();
-    (data.gateway.status as any).listeners = [
-      { name: "tcp-27010", attachedRoutes: 1 },
-    ];
+    (data.gateway.status as any).listeners = [{ name: 'tcp-27010', attachedRoutes: 1 }];
     expect(snapshot(data, now).freePorts.TCP).toEqual([]);
   });
-  it("includes expired and incomplete objects until cleanup removes them", () => {
+  it('includes expired and incomplete objects until cleanup removes them', () => {
     const data = fixture();
-    const r = resource("ps-123", "aap-user-7", "Service");
-    r.metadata.annotations![EXPIRY] = "2026-10-28T14:00:00Z";
+    const r = resource('ps-123', 'aap-user-7', 'Service');
+    r.metadata.annotations![EXPIRY] = '2026-10-28T14:00:00Z';
     data.objects = [r];
     const state = snapshot(data, now);
-    expect(state.shares[0].status).toBe("Awaiting cleanup");
+    expect(state.shares[0].status).toBe('Awaiting cleanup');
     expect(state.limits.active).toBe(1);
   });
-  it("requires current-generation Gateway status", () => {
+  it('requires current-generation Gateway status', () => {
     const data = fixture();
     data.gateway.metadata.generation = 2;
     expect(snapshot(data, now).gatewayReady).toBe(false);
     expect(snapshot(data, now).freePorts.UDP).toEqual([]);
   });
-  it("does not claim a route is configured without a ready proxy", () => {
+  it('does not claim a route is configured without a ready proxy', () => {
     const data = fixture();
     const r = resource();
     r.status = {
       parents: [
         {
-          parentRef: { name: "public", namespace: "nginx-gateway" },
-          conditions: ["Accepted", "ResolvedRefs"].map((type) => ({
+          parentRef: { name: 'public', namespace: 'nginx-gateway' },
+          conditions: ['Accepted', 'ResolvedRefs'].map((type) => ({
             type,
-            status: "True",
+            status: 'True',
             observedGeneration: 1,
           })),
         },
       ],
     };
     data.objects = [r];
-    expect(snapshot(data, now).shares[0].status).toBe(
-      "Provisioning or incomplete"
-    );
+    expect(snapshot(data, now).shares[0].status).toBe('Provisioning or incomplete');
     data.proxyEndpoints = [
       {
-        kind: "EndpointSlice",
+        kind: 'EndpointSlice',
         metadata: {
-          name: "proxy",
-          labels: { "kubernetes.io/service-name": "ocp-ps-123-bridge" },
+          name: 'proxy',
+          labels: { 'kubernetes.io/service-name': 'ocp-ps-123-bridge' },
         },
         endpoints: [{ conditions: { ready: true } }],
       },
     ];
-    expect(snapshot(data, now).shares[0].status).toBe("Configured");
+    expect(snapshot(data, now).shares[0].status).toBe('Configured');
   });
 });
 
-describe("submit-time validation", () => {
-  it("passes an optional custom subdomain without changing share identity", () => {
+describe('submit-time validation', () => {
+  it('passes an optional custom subdomain without changing share identity', () => {
     const state = snapshot(fixture(), now);
     const input = {
-      action: "create",
-      backend: "web",
-      protocol: "HTTP",
+      action: 'create',
+      backend: 'web',
+      protocol: 'HTTP',
       leaseHours: 2,
     };
-    expect(
-      launchVariables({ ...input, subdomain: "demo" }, state, now)
-    ).toMatchObject({
-      public_share_subdomain: "demo",
-      public_share_backend: "web",
+    expect(launchVariables({ ...input, subdomain: 'demo' }, state, now)).toMatchObject({
+      public_share_subdomain: 'demo',
+      public_share_backend: 'web',
     });
-    expect(launchVariables(input, state, now)).not.toHaveProperty(
-      "public_share_subdomain"
+    expect(launchVariables(input, state, now)).not.toHaveProperty('public_share_subdomain');
+    expect(launchVariables({ ...input, subdomain: '' }, state, now)).not.toHaveProperty(
+      'public_share_subdomain'
     );
-    expect(
-      launchVariables({ ...input, subdomain: "" }, state, now)
-    ).not.toHaveProperty("public_share_subdomain");
   });
   it.each([
-    "www",
-    "gotify",
-    "ps-123",
-    "Demo",
-    "-demo",
-    "demo-",
-    "demo.example",
-    "*",
-    "a".repeat(64),
-    ["demo"],
-  ])("rejects an invalid or reserved custom subdomain %j", (subdomain) => {
+    'www',
+    'gotify',
+    'ps-123',
+    'Demo',
+    '-demo',
+    'demo-',
+    'demo.example',
+    '*',
+    'a'.repeat(64),
+    ['demo'],
+  ])('rejects an invalid or reserved custom subdomain %j', (subdomain) => {
     expect(() =>
       launchVariables(
         {
-          action: "create",
-          backend: "web",
-          protocol: "HTTP",
+          action: 'create',
+          backend: 'web',
+          protocol: 'HTTP',
           leaseHours: 2,
           subdomain,
         },
         snapshot(fixture(), now),
         now
       )
-    ).toThrow("subdomain");
+    ).toThrow('subdomain');
   });
-  it.each(["demo.igou.io", "*.igou.io", undefined])(
-    "rejects a hostname claimed by another owner or catch-all route %j",
+  it.each(['demo.igou.io', '*.igou.io', undefined])(
+    'rejects a hostname claimed by another owner or catch-all route %j',
     (hostname) => {
       const data = fixture();
-      const route = resource("ps-456", "aap-user-8", "HTTPRoute");
-      route.spec.parentRefs[0].sectionName = "https";
+      const route = resource('ps-456', 'aap-user-8', 'HTTPRoute');
+      route.spec.parentRefs[0].sectionName = 'https';
       route.spec.hostnames = hostname ? [hostname] : [];
       data.objects = [route];
       expect(() =>
         launchVariables(
           {
-            action: "create",
-            backend: "web",
-            protocol: "HTTP",
+            action: 'create',
+            backend: 'web',
+            protocol: 'HTTP',
             leaseHours: 2,
-            subdomain: "demo",
+            subdomain: 'demo',
           },
           snapshot(data, now),
           now
         )
-      ).toThrow("already in use");
+      ).toThrow('already in use');
     }
   );
-  it("reserves custom TCP/UDP endpoint names and displays them", () => {
+  it('reserves custom TCP/UDP endpoint names and displays them', () => {
     const data = fixture();
     const route = resource();
-    route.metadata.annotations![HOSTNAME] = "demo.igou.io";
+    route.metadata.annotations![HOSTNAME] = 'demo.igou.io';
     data.objects = [route];
-    expect(snapshot(data, now).shares[0].endpoints).toEqual([
-      "udp://demo.igou.io:27018",
-    ]);
+    expect(snapshot(data, now).shares[0].endpoints).toEqual(['udp://demo.igou.io:27018']);
     expect(() =>
       launchVariables(
         {
-          action: "create",
-          backend: "web",
-          protocol: "HTTP",
+          action: 'create',
+          backend: 'web',
+          protocol: 'HTTP',
           leaseHours: 2,
-          subdomain: "demo",
+          subdomain: 'demo',
         },
         snapshot(data, now),
         now
       )
-    ).toThrow("already in use");
+    ).toThrow('already in use');
   });
   const body = {
-    action: "create",
-    backend: "game",
-    protocol: "UDP",
+    action: 'create',
+    backend: 'game',
+    protocol: 'UDP',
     port: 27018,
     leaseHours: 2,
   };
-  it("emits only the survey allowlist with server-computed expiration", () => {
+  it('emits only the survey allowlist with server-computed expiration', () => {
     expect(
       launchVariables(
         { ...body, awx_user_id: 1, extra_vars: { evil: true } },
@@ -290,94 +276,72 @@ describe("submit-time validation", () => {
         now
       )
     ).toEqual({
-      public_share_action: "create",
-      public_share_backend: "game",
-      public_share_protocols: ["UDP"],
+      public_share_action: 'create',
+      public_share_backend: 'game',
+      public_share_protocols: ['UDP'],
       public_share_udp_port: 27018,
-      public_share_expires_at: "2026-10-28T17:00:00Z",
+      public_share_expires_at: '2026-10-28T17:00:00Z',
     });
   });
-  it("rejects a port which was occupied after the menu was rendered", () => {
+  it('rejects a port which was occupied after the menu was rendered', () => {
     const data = fixture();
     data.objects = [resource()];
-    expect(() => launchVariables(body, snapshot(data, now), now)).toThrow(
-      "no longer available"
-    );
+    expect(() => launchVariables(body, snapshot(data, now), now)).toThrow('no longer available');
   });
-  it("sends whole-second UTC timestamps when the server clock includes milliseconds", () => {
+  it('sends whole-second UTC timestamps when the server clock includes milliseconds', () => {
     const variables = launchVariables(
       body,
       snapshot(fixture(), now),
-      new Date("2026-10-28T15:00:00.157Z")
+      new Date('2026-10-28T15:00:00.157Z')
     );
-    expect(variables.public_share_expires_at).toBe("2026-10-28T17:00:00Z");
+    expect(variables.public_share_expires_at).toBe('2026-10-28T17:00:00Z');
   });
-  it("rejects offline services, unsupported protocols, and excess leases", () => {
+  it('rejects offline services, unsupported protocols, and excess leases', () => {
     const data = fixture();
     data.endpoints = [];
-    expect(() => launchVariables(body, snapshot(data, now), now)).toThrow(
-      "not ready"
-    );
+    expect(() => launchVariables(body, snapshot(data, now), now)).toThrow('not ready');
     expect(() =>
-      launchVariables(
-        { ...body, protocol: "TCP" },
-        snapshot(fixture(), now),
-        now
-      )
-    ).toThrow("not supported");
+      launchVariables({ ...body, protocol: 'TCP' }, snapshot(fixture(), now), now)
+    ).toThrow('not supported');
     expect(() =>
-      launchVariables(
-        { ...body, leaseHours: 73 },
-        snapshot(fixture(), now),
-        now
-      )
-    ).toThrow("Lease");
+      launchVariables({ ...body, leaseHours: 73 }, snapshot(fixture(), now), now)
+    ).toThrow('Lease');
   });
-  it("rejects foreign ownership and the operator-only cleanup action", () => {
+  it('rejects foreign ownership and the operator-only cleanup action', () => {
     const state = snapshot(fixture(), now);
-    expect(() =>
-      launchVariables({ action: "remove", shareId: "ps-999" }, state)
-    ).toThrow("does not belong");
-    expect(() => launchVariables({ action: "cleanup" }, state)).toThrow(
-      "Choose"
+    expect(() => launchVariables({ action: 'remove', shareId: 'ps-999' }, state)).toThrow(
+      'does not belong'
     );
+    expect(() => launchVariables({ action: 'cleanup' }, state)).toThrow('Choose');
   });
-  it("enforces owner and global budgets independently", () => {
+  it('enforces owner and global budgets independently', () => {
     const data = fixture();
     data.catalog.maxPerOwner = 1;
     data.objects = [resource()];
-    expect(() => launchVariables(body, snapshot(data, now), now)).toThrow(
-      "limit"
-    );
+    expect(() => launchVariables(body, snapshot(data, now), now)).toThrow('limit');
     data.catalog.maxActive = 1;
-    data.objects = [resource("ps-8", "aap-user-8")];
-    expect(() => launchVariables(body, snapshot(data, now), now)).toThrow(
-      "limit"
-    );
+    data.objects = [resource('ps-8', 'aap-user-8')];
+    expect(() => launchVariables(body, snapshot(data, now), now)).toThrow('limit');
   });
-  it("returns required survey fields for extend and remove", () => {
+  it('returns required survey fields for extend and remove', () => {
     const data = fixture();
     data.objects = [resource()];
     expect(
-      launchVariables(
-        { action: "remove", shareId: "ps-123" },
-        snapshot(data, now),
-        now
-      )
+      launchVariables({ action: 'remove', shareId: 'ps-123' }, snapshot(data, now), now)
     ).toEqual({
-      public_share_action: "remove",
-      public_share_id: "ps-123",
-      public_share_protocols: ["HTTP"],
+      public_share_action: 'remove',
+      public_share_id: 'ps-123',
+      public_share_protocols: ['HTTP'],
     });
   });
-  it("fails closed on malformed catalog input", () => {
+  it('fails closed on malformed catalog input', () => {
     expect(() => parseCatalog({})).toThrow();
     expect(() =>
       parseCatalog({
         public_share_backends: {
           unsafe: {
-            service: "x",
-            tailnet_fqdn: "internal.example.com",
+            service: 'x',
+            tailnet_fqdn: 'internal.example.com',
             ports: { HTTP: 80 },
           },
         },
