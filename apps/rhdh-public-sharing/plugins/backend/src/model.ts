@@ -7,7 +7,6 @@ function validSubdomain(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(value) &&
-    !['www', 'gotify'].includes(value) &&
     !value.startsWith('ps-')
   );
 }
@@ -290,7 +289,7 @@ export function launchVariables(body: any, state: ReturnType<typeof snapshot>, n
         throw new Error(
           'Choose a non-reserved subdomain of 1-63 lowercase letters, digits or internal hyphens'
         );
-      if (state.occupiedHostnames.some((h) => hostnameMatches(`${subdomain}.igou.io`, h)))
+      if (state.occupiedHostnames.some((h) => hostnameMatches(`${subdomain}.sharing.igou.io`, h)))
         throw new Error('Subdomain is already in use; choose another name');
       variables.public_share_subdomain = subdomain;
     }

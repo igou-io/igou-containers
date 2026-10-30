@@ -175,6 +175,29 @@ describe('runtime sharing menu', () => {
 });
 
 describe('submit-time validation', () => {
+  it.each(['www', 'gotify'])(
+    'allows root application label %s in the sharing namespace',
+    (subdomain) => {
+      expect(
+        launchVariables(
+          { action: 'create', backend: 'web', protocol: 'HTTP', leaseHours: 2, subdomain },
+          snapshot(fixture(), now),
+          now
+        )
+      ).toMatchObject({ public_share_subdomain: subdomain });
+    }
+  );
+  it('preserves legacy endpoints and permits their renewal and removal', () => {
+    const data = fixture();
+    data.objects = [resource()];
+    const state = snapshot(data, now);
+    expect(state.shares[0].endpoints).toEqual(['udp://ps-123.igou.io:27018']);
+    for (const action of ['extend', 'remove']) {
+      expect(
+        launchVariables({ action, shareId: 'ps-123', leaseHours: 2 }, state, now)
+      ).toMatchObject({ public_share_action: action, public_share_id: 'ps-123' });
+    }
+  });
   it('passes an optional custom subdomain without changing share identity', () => {
     const state = snapshot(fixture(), now);
     const input = {
@@ -192,33 +215,25 @@ describe('submit-time validation', () => {
       'public_share_subdomain'
     );
   });
-  it.each([
-    'www',
-    'gotify',
-    'ps-123',
-    'Demo',
-    '-demo',
-    'demo-',
-    'demo.example',
-    '*',
-    'a'.repeat(64),
-    ['demo'],
-  ])('rejects an invalid or reserved custom subdomain %j', (subdomain) => {
-    expect(() =>
-      launchVariables(
-        {
-          action: 'create',
-          backend: 'web',
-          protocol: 'HTTP',
-          leaseHours: 2,
-          subdomain,
-        },
-        snapshot(fixture(), now),
-        now
-      )
-    ).toThrow('subdomain');
-  });
-  it.each(['demo.igou.io', '*.igou.io', undefined])(
+  it.each(['ps-123', 'Demo', '-demo', 'demo-', 'demo.example', '*', 'a'.repeat(64), ['demo']])(
+    'rejects an invalid or reserved custom subdomain %j',
+    (subdomain) => {
+      expect(() =>
+        launchVariables(
+          {
+            action: 'create',
+            backend: 'web',
+            protocol: 'HTTP',
+            leaseHours: 2,
+            subdomain,
+          },
+          snapshot(fixture(), now),
+          now
+        )
+      ).toThrow('subdomain');
+    }
+  );
+  it.each(['demo.sharing.igou.io', '*.sharing.igou.io', '*.igou.io', undefined])(
     'rejects a hostname claimed by another owner or catch-all route %j',
     (hostname) => {
       const data = fixture();
@@ -244,9 +259,9 @@ describe('submit-time validation', () => {
   it('reserves custom TCP/UDP endpoint names and displays them', () => {
     const data = fixture();
     const route = resource();
-    route.metadata.annotations![HOSTNAME] = 'demo.igou.io';
+    route.metadata.annotations![HOSTNAME] = 'demo.sharing.igou.io';
     data.objects = [route];
-    expect(snapshot(data, now).shares[0].endpoints).toEqual(['udp://demo.igou.io:27018']);
+    expect(snapshot(data, now).shares[0].endpoints).toEqual(['udp://demo.sharing.igou.io:27018']);
     expect(() =>
       launchVariables(
         {

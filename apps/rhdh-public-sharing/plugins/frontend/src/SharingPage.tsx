@@ -218,7 +218,7 @@ export function SharingPageContent({ request }: { request: SharingRequest }) {
       ? ''
       : !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)
       ? 'Use 1-63 lowercase letters, digits or internal hyphens.'
-      : ['www', 'gotify'].includes(subdomain) || subdomain.startsWith('ps-')
+      : subdomain.startsWith('ps-')
       ? 'This subdomain is reserved.'
       : '';
   const canCreate =
@@ -312,8 +312,8 @@ export function SharingPageContent({ request }: { request: SharingRequest }) {
                 helperText={
                   subdomainError ||
                   (subdomain
-                    ? `${subdomain}.igou.io`
-                    : 'Optional; blank generates ps-<job>.igou.io')
+                    ? `${subdomain}.sharing.igou.io`
+                    : 'Optional; blank generates ps-<job>.sharing.igou.io')
                 }
               />
               <FormControl style={{ minWidth: 220 }} disabled={disabled}>

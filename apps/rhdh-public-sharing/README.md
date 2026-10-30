@@ -97,16 +97,18 @@ the authoritative validation and serializes sharing jobs. Displayed free ports
 are advisory until the job creates its resources.
 
 The **Endpoint subdomain** field accepts a single lowercase DNS label such as
-`demo`, producing `demo.igou.io` for HTTPS, TCP, or UDP endpoints. Blank input
-keeps `ps-<job>.igou.io`. Labels must contain 1–63 lowercase letters, digits,
-or internal hyphens; `www`, `gotify`, and the `ps-` prefix are reserved.
+`demo`, producing `demo.sharing.igou.io` for HTTPS, TCP, or UDP endpoints. Blank
+input generates `ps-<job>.sharing.igou.io`. Labels must contain 1–63 lowercase
+letters, digits, or internal hyphens; the `ps-` prefix is reserved.
 Names already claimed by another share are rejected, including expired shares
 awaiting cleanup. Internal share IDs remain job-derived; renew and remove use
 that ID and do not rename the endpoint. Existing shares retain their names.
 
-Custom names require the matching VPS admission policy and AAP survey field
-`public_share_subdomain`. When adding a permanent `*.igou.io` application,
-reserve its label in the portal, Ansible renderer, and VPS admission policy.
+New names require the matching VPS admission policy, AAP survey field
+`public_share_subdomain`, and a Gateway certificate covering `*.sharing.igou.io`.
+The dedicated namespace separates temporary shares from permanent `*.igou.io`
+applications. Existing root-domain shares remain renewable and removable at
+their original addresses. Keep permanent applications outside `sharing.igou.io`.
 
 Offline backends remain visible but cannot be shared. Unknown/unavailable
 runtime state disables actions. `Configured` requires current route conditions,

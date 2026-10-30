@@ -69,7 +69,7 @@ describe('runtime sharing page', () => {
     fireEvent.change(screen.getByLabelText('Endpoint subdomain'), {
       target: { value: 'demo' },
     });
-    expect(screen.getByText('demo.igou.io')).toBeTruthy();
+    expect(screen.getByText('demo.sharing.igou.io')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Share service' }));
     await screen.findByText('AAP job 123');
     const calls = vi.mocked(request).mock.calls.filter(([p]) => p === '/shares');
@@ -91,7 +91,7 @@ describe('runtime sharing page', () => {
     const button = screen.getByRole('button', {
       name: 'Share service',
     }) as HTMLButtonElement;
-    for (const value of ['www', 'gotify', 'ps-123', 'demo.example', '-demo', 'Demo']) {
+    for (const value of ['ps-123', 'demo.example', '-demo', 'Demo']) {
       fireEvent.change(screen.getByLabelText('Endpoint subdomain'), {
         target: { value },
       });
@@ -101,6 +101,11 @@ describe('runtime sharing page', () => {
       target: { value: '' },
     });
     expect(button.disabled).toBe(false);
+    for (const value of ['www', 'gotify']) {
+      fireEvent.change(screen.getByLabelText('Endpoint subdomain'), { target: { value } });
+      expect(button.disabled).toBe(false);
+      expect(screen.getByText(`${value}.sharing.igou.io`)).toBeTruthy();
+    }
   });
   it('refreshes automatically and removes stale controls on a runtime failure', async () => {
     const interval = vi.spyOn(window, 'setInterval');
