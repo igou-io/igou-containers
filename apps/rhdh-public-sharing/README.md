@@ -88,13 +88,25 @@ are rejected.
 - `GET /oauth/callback`: consumes OAuth state, connects AAP, and notifies the opener.
 - `POST /disconnect`: removes the local connection and revokes its AAP access and refresh tokens.
 - `GET /state`: returns readiness, free ports, the caller's shares, quotas, and observation time.
-- `POST /shares`: accepts `action`, `backend`, `protocol`, `port`, `leaseHours`, and `shareId` as appropriate.
+- `POST /shares`: accepts `action`, `backend`, `protocol`, `port`, `leaseHours`, `shareId`, and optional create-only `subdomain`.
 - `GET /jobs/:id`: returns safe status fields for a job launched in this connection.
 
 Every submission rereads runtime state and AAP execute permission. Only
 allowlisted survey variables are sent to the fixed job template. AAP retains
 the authoritative validation and serializes sharing jobs. Displayed free ports
 are advisory until the job creates its resources.
+
+The **Endpoint subdomain** field accepts a single lowercase DNS label such as
+`demo`, producing `demo.igou.io` for HTTPS, TCP, or UDP endpoints. Blank input
+keeps `ps-<job>.igou.io`. Labels must contain 1–63 lowercase letters, digits,
+or internal hyphens; `www`, `gotify`, and the `ps-` prefix are reserved.
+Names already claimed by another share are rejected, including expired shares
+awaiting cleanup. Internal share IDs remain job-derived; renew and remove use
+that ID and do not rename the endpoint. Existing shares retain their names.
+
+Custom names require the matching VPS admission policy and AAP survey field
+`public_share_subdomain`. When adding a permanent `*.igou.io` application,
+reserve its label in the portal, Ansible renderer, and VPS admission policy.
 
 Offline backends remain visible but cannot be shared. Unknown/unavailable
 runtime state disables actions. `Configured` requires current route conditions,
