@@ -2,7 +2,9 @@ FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:c1b79382a6
 USER 0
 WORKDIR /opt/gdrive-mcp
 COPY package.json package-lock.json ./
+COPY patch-upstream.mjs ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && \
+    node patch-upstream.mjs && \
     npm cache clean --force
 
 FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:c1b79382a645eb97124182a2f6c396ba3c7680e2b2dcf84443c296f41a644bf6
