@@ -1,0 +1,8 @@
+{
+  "name": "igou-google-drive-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@piotr-agier/google-drive-mcp": "2.13.0"
+  }
+}

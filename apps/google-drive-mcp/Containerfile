@@ -1,0 +1,17 @@
+FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:c1b79382a645eb97124182a2f6c396ba3c7680e2b2dcf84443c296f41a644bf6 AS dependencies
+USER 0
+WORKDIR /opt/gdrive-mcp
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && \
+    npm cache clean --force
+
+FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:c1b79382a645eb97124182a2f6c396ba3c7680e2b2dcf84443c296f41a644bf6
+ENV NODE_ENV=production \
+    XDG_CONFIG_HOME=/tmp/gdrive-mcp \
+    XDG_CACHE_HOME=/tmp/gdrive-mcp/cache
+WORKDIR /opt/gdrive-mcp
+COPY --from=dependencies /opt/gdrive-mcp /opt/gdrive-mcp
+USER 1001
+EXPOSE 3100
+ENTRYPOINT ["node", "/opt/gdrive-mcp/node_modules/@piotr-agier/google-drive-mcp/dist/index.js"]
+CMD ["start", "--transport", "http", "--host", "0.0.0.0", "--port", "3100"]
