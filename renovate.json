@@ -36,7 +36,36 @@
     },
     {
       "matchManagers": ["npm"],
-      "groupName": "npm dependencies"
+      "groupName": "npm dependencies",
+      "separateMajorMinor": true
+    },
+    {
+      "description": "Review npm major migrations individually instead of mixing them with routine updates",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": null,
+      "automerge": false
+    },
+    {
+      "description": "Dynamic plugin framework and export tooling must stay compatible with the RHDH host; review these updates together",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "apps/rhdh-public-sharing/**"
+      ],
+      "matchPackageNames": [
+        "@backstage/**",
+        "@red-hat-developer-hub/cli",
+        "typescript"
+      ],
+      "groupName": "rhdh host compatibility",
+      "automerge": false,
+      "separateMajorMinor": true
     }
   ],
   "customManagers": [
