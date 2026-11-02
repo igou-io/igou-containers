@@ -22,18 +22,18 @@
     "export": "rhdh-cli plugin export"
   },
   "dependencies": {
-    "@backstage/core-plugin-api": "1.12.4",
-    "@backstage/core-components": "0.18.8",
-    "@mui/material": "5.0.0"
+    "@backstage/core-plugin-api": "1.12.11",
+    "@backstage/core-components": "0.18.15",
+    "@mui/material": "9.5.0"
   },
   "peerDependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.2"
+    "react": "^18.3.1 || ^19.0.0",
+    "react-dom": "^18.3.1 || ^19.0.0",
+    "react-router-dom": "^6.30.2 || ^7.0.0"
   },
   "devDependencies": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "react-router-dom": "6.30.6"
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router-dom": "7.18.5"
   }
 }
