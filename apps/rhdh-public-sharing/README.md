@@ -26,6 +26,13 @@ Root Yarn resolutions pin security fixes in the CLI's transitive dependencies
 and frontend libraries while retaining that exporter version. Changes to these
 overrides must pass type checking, tests, package builds, and both dynamic
 exports using the commands above.
+Renovate keeps routine dependency updates separate from major migrations.
+Major updates require review, and Backstage packages, the RHDH exporter CLI
+and TypeScript use a separate host-compatibility group with automerge disabled.
+Backstage core/library versions must be reviewed together against the host
+release, including transitive packages; a plugin build alone does not prove
+host compatibility. See the [Backstage skew policy](https://backstage.io/docs/overview/versioning-policy/#skew-policy).
+
 The final image contains two packages at `/igou-plugin-public-sharing` and
 `/igou-plugin-public-sharing-backend`. It has no entrypoint.
 
