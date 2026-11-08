@@ -24,7 +24,7 @@
   "dependencies": {
     "@backstage/core-plugin-api": "1.12.4",
     "@backstage/core-components": "0.18.8",
-    "@mui/material": "5.0.0"
+    "@mui/material": "5.18.0"
   },
   "peerDependencies": {
     "react": "^18.3.1",
