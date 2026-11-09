@@ -22,8 +22,8 @@
     "export": "rhdh-cli plugin export"
   },
   "dependencies": {
-    "@backstage/core-plugin-api": "1.12.4",
-    "@backstage/core-components": "0.18.8",
+    "@backstage/core-plugin-api": "1.12.11",
+    "@backstage/core-components": "0.18.15",
     "@mui/material": "5.18.0"
   },
   "peerDependencies": {
