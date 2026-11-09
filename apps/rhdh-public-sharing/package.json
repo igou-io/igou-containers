@@ -16,7 +16,7 @@
     "@azure/msal-node": "7.2.0",
     "@remix-run/router": "1.23.4",
     "adm-zip": "0.6.1",
-    "koa": "2.16.4",
+    "koa": "3.3.0",
     "tar": "7.5.22",
     "underscore": "1.13.8",
     "undici": "7.30.2",
