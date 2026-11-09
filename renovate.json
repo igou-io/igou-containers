@@ -66,6 +66,20 @@
       "groupName": "rhdh host compatibility",
       "automerge": false,
       "separateMajorMinor": true
+    },
+    {
+      "description": "RHDH 1.10 exposes Express 4 request and router types; migrate Express with the Backstage host",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "apps/rhdh-public-sharing/**"
+      ],
+      "matchPackageNames": [
+        "express",
+        "@types/express"
+      ],
+      "allowedVersions": "<5"
     }
   ],
   "customManagers": [

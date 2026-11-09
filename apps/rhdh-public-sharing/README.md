@@ -32,6 +32,9 @@ and TypeScript use a separate host-compatibility group with automerge disabled.
 Backstage core/library versions must be reviewed together against the host
 release, including transitive packages; a plugin build alone does not prove
 host compatibility. See the [Backstage skew policy](https://backstage.io/docs/overview/versioning-policy/#skew-policy).
+Express and `@types/express` stay on version 4 to match the host's HTTP router
+and authentication API. Renovate caps both below version 5 until the Backstage
+host is migrated and the plugin is tested against it.
 
 The final image contains two packages at `/igou-plugin-public-sharing` and
 `/igou-plugin-public-sharing-backend`. It has no entrypoint.
