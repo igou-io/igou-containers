@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:dc3dc17588f139964f30d49bcb6cfeedb9e5d51bd4cf77ee4ab58a33ed9dff2a AS dependencies
+FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:6f9361c4f61e2c8127e138637adbf96cc49f5979be6e2dfb9d58f73835ba4860 AS dependencies
 USER 0
 WORKDIR /opt/gdrive-mcp
 COPY package.json package-lock.json ./
@@ -7,7 +7,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && \
     node patch-upstream.mjs && \
     npm cache clean --force
 
-FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:dc3dc17588f139964f30d49bcb6cfeedb9e5d51bd4cf77ee4ab58a33ed9dff2a
+FROM registry.access.redhat.com/ubi10/nodejs-22-minimal:latest@sha256:6f9361c4f61e2c8127e138637adbf96cc49f5979be6e2dfb9d58f73835ba4860
 ENV NODE_ENV=production \
     XDG_CONFIG_HOME=/tmp/gdrive-mcp \
     XDG_CACHE_HOME=/tmp/gdrive-mcp/cache
