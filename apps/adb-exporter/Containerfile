@@ -1,6 +1,6 @@
-ARG GO_TOOLSET_IMAGE=registry.access.redhat.com/ubi9/go-toolset:9.8-1794208260@sha256:0e3894cea4fc077084245e8aa2befc8a7d91a4f60fbf850f0b5b555cbe62ee26
-ARG UBI_IMAGE=registry.access.redhat.com/ubi9/ubi:9.8-1794186345@sha256:87f66688da4e206d5a1877088626c542288a5ccd97898cf363b588d57817e6be
-ARG UBI_IMAGE_MICRO=registry.access.redhat.com/ubi9/ubi-micro:9.8-1794184668@sha256:d3499a0896e2d6a1642f922615831bc5c2fd513bbb34f3446cabba530d9d54a2
+ARG GO_TOOLSET_IMAGE=registry.access.redhat.com/ubi9/go-toolset:9.9-1793884566@sha256:a2ad457dc7525635613d2355037239ca9bf4374ba3b59961d1cdaa4d5f1af7d8
+ARG UBI_IMAGE=registry.access.redhat.com/ubi9/ubi:9.9-1793830043@sha256:8b212f75a0e5a156ac28b1c5c030d2e8a07715254e19d522286118279399af81
+ARG UBI_IMAGE_MICRO=registry.access.redhat.com/ubi9/ubi-micro:9.9-1793867126@sha256:b59ac4f291d86027c2681f7a7b1cbf7448972fc55a6cb8e25cab5aa5eef5ce5f
 
 FROM ${UBI_IMAGE_MICRO} AS target
 
