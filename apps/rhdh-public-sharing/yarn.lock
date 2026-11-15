@@ -2,17 +2,17 @@
 # yarn lockfile v1
 
 
-"@azure/msal-common@16.16.0":
-  version "16.16.0"
-  resolved "https://registry.yarnpkg.com/@azure/msal-common/-/msal-common-16.16.0.tgz#cf8ba5ec852397f2e1441274b5003f96bf6c5474"
-  integrity sha512-EZgd8h5nczsdRAQAgXA0A0pC5L/zj43n1jePXvUMgdwXMbH2zhb7b7Hp+Oe7ZOODK/sch2x+soD6FOrtgUbx/w==
+"@azure/msal-common@16.16.1":
+  version "16.16.1"
+  resolved "https://registry.yarnpkg.com/@azure/msal-common/-/msal-common-16.16.1.tgz#900884e2a87dc7c7b83576437ebcd0beefe0f6cd"
+  integrity sha512-dSKdL9h/iercb4GumsKFh+wVvLe1ohuDPiviklgnQVHnY2FYNUlbQJ3E1Qd37vkof9CfraK9BQpCW1hoOg0znQ==
 
-"@azure/msal-node@7.2.0":
-  version "7.2.0"
-  resolved "https://registry.yarnpkg.com/@azure/msal-node/-/msal-node-7.2.0.tgz#e725b6590017ce0c315756e97adf81b0eb37a4a0"
-  integrity sha512-Y87VJsMWF4jiqLqq8XYLb1o+rGc/HacwS3Zydi3bDtaVm5Sa8FlB7YrKrBFKRIYj27RJXAaDkErImMAqtM10Pg==
+"@azure/msal-node@7.2.1":
+  version "7.2.1"
+  resolved "https://registry.yarnpkg.com/@azure/msal-node/-/msal-node-7.2.1.tgz#b216bc19fd78a0b25d38f527568b32890829ffb7"
+  integrity sha512-6mntsfCNq7H1eAPSZik74jT3C5at4nRqiVk7OC+D5Hy3Pe3s76uwE4+J0xvDvlVPmoX2kasf3mSwUmzeq9rW/A==
   dependencies:
-    "@azure/msal-common" "16.16.0"
+    "@azure/msal-common" "16.16.1"
     jsonwebtoken "^9.0.0"
 
 "@babel/code-frame@7.0.0":
@@ -13796,10 +13796,10 @@ tar-stream@^2.1.4:
     inherits "^2.0.3"
     readable-stream "^3.1.1"
 
-tar@7.5.22, tar@^7.5.21, tar@^7.5.6:
-  version "7.5.22"
-  resolved "https://registry.yarnpkg.com/tar/-/tar-7.5.22.tgz#a696f998136e71487dc3f869a85bba2c67971ba9"
-  integrity sha512-MFO/QzvtAOmJbkhOaCTvbGcFN9L9b+JunIsDwaKljSOdcLMea3NJ1k9Usz/rjdfSXTq4dfzfeS7W4p4YOAAHeA==
+tar@7.5.23, tar@^7.5.21, tar@^7.5.6:
+  version "7.5.23"
+  resolved "https://registry.yarnpkg.com/tar/-/tar-7.5.23.tgz#5ff22a2b3bb122b4c412b81cb54102a80d153e80"
+  integrity sha512-lkukzdoGngZHJZXxW4S/E4Fp9ghTDlyZXrQGRNoJ/LXvDKcXUTq2sg5yQe74po7Voea6n/IN09+wE/QvJMiifA==
   dependencies:
     "@isaacs/fs-minipass" "^4.0.0"
     chownr "^3.0.0"
@@ -14937,10 +14937,10 @@ wrappy@1:
   resolved "https://registry.yarnpkg.com/wrappy/-/wrappy-1.0.2.tgz#b5243d8f3ec1aa35f1364605bc0d1036e30ab69f"
   integrity sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==
 
-ws@8.21.0, ws@8.21.3, ws@8.22.1, ws@^8.18.0:
-  version "8.22.1"
-  resolved "https://registry.yarnpkg.com/ws/-/ws-8.22.1.tgz#60d427870e8272ddb10c7fc5cdf00a70eaec369e"
-  integrity sha512-oyL6OPYme/CmiFvNuGzeoxCJ4nOrZE2O1FwM9MWM1AsGri6nLXB2pg+lNA8aLeXMSav0J6eIVS1j6vUPzUtK9g==
+ws@8.21.0, ws@8.21.3, ws@8.22.2, ws@^8.18.0:
+  version "8.22.2"
+  resolved "https://registry.yarnpkg.com/ws/-/ws-8.22.2.tgz#b1762f4e4ac87ab44aa358f680cdf5d08b166d37"
+  integrity sha512-/rEZ2ejown2N5gxVTHUu9bVVC7ttu0/Tgzf5hbTOixR3Fs7mbbXgn2DbdbcKgJOmpQMtrIUWivtYuVMnp/W/yA==
 
 wsl-utils@^0.1.0:
   version "0.1.0"
