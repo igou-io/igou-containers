@@ -5,37 +5,55 @@
   ],
   "packageRules": [
     {
-      "matchManagers": ["pip_requirements"],
+      "matchManagers": [
+        "pip_requirements"
+      ],
       "groupName": "python dependencies"
     },
     {
-      "matchManagers": ["dockerfile"],
+      "matchManagers": [
+        "dockerfile"
+      ],
       "groupName": "container base images"
     },
     {
-      "matchManagers": ["custom.regex"],
+      "matchManagers": [
+        "custom.regex"
+      ],
       "groupName": "cli tools"
     },
     {
       "description": "Track the OpenZFS 2.3 line — must match the TrueNAS 25.10 host kmod (zfs-exporter)",
-      "matchDepNames": ["openzfs/zfs"],
+      "matchDepNames": [
+        "openzfs/zfs"
+      ],
       "groupName": "zfs-exporter dependencies",
       "allowedVersions": "<2.4.0"
     },
     {
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "github actions"
     },
     {
       "description": "UBI base images carry security fixes as new digests/builds — ship them immediately, outside the weekly schedule and age gate",
-      "matchDatasources": ["docker"],
-      "matchPackageNames": ["registry.access.redhat.com/**"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "registry.access.redhat.com/**"
+      ],
       "groupName": "ubi base images",
-      "schedule": ["at any time"],
+      "schedule": [
+        "at any time"
+      ],
       "minimumReleaseAge": null
     },
     {
-      "matchManagers": ["npm"],
+      "matchManagers": [
+        "npm"
+      ],
       "groupName": "npm dependencies",
       "separateMajorMinor": true
     },
@@ -61,14 +79,15 @@
       "matchPackageNames": [
         "@backstage/**",
         "@red-hat-developer-hub/cli",
-        "typescript"
+        "typescript",
+        "@typescript/typescript6"
       ],
       "groupName": "rhdh host compatibility",
       "automerge": false,
       "separateMajorMinor": true
     },
     {
-      "description": "RHDH 1.10 exposes Express 4 request and router types; migrate Express with the Backstage host",
+      "description": "RHDH 2.1 / Backstage 1.54.6 exposes Express 4 router types; migrate Express with the Backstage host",
       "matchManagers": [
         "npm"
       ],
@@ -86,7 +105,9 @@
     {
       "description": "Update pinned versions in Containerfiles via '# renovate:' comments",
       "customType": "regex",
-      "managerFilePatterns": ["/Containerfile$/"],
+      "managerFilePatterns": [
+        "/Containerfile$/"
+      ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\n(?:ARG )?\\w+_VERSION=\"(?<currentValue>[^\"]+)\""
       ],

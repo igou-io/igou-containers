@@ -1,7 +1,7 @@
 # RHDH service sharing
 
-Frontend and backend dynamic plugins for the lab's RHDH 1.10 / Backstage
-1.49.4 instance. The `Service sharing` page at `/public-sharing` reads current
+Frontend and backend dynamic plugins for RHDH 2.1 / Backstage
+1.54.6. The `Service sharing` page at `/public-sharing` reads current
 cluster state every 15 seconds and launches the existing `vps_public_share`
 AAP job template using the caller's OAuth identity.
 
@@ -20,8 +20,11 @@ yarn workspace @igou/plugin-public-sharing export
 podman build -t localhost/rhdh-public-sharing:dev -f Containerfile .
 ```
 
-The pinned RHDH CLI exports Scalprum assets. CLI 2.x produces a different
-frontend format and must not be substituted without testing the RHDH host.
+The pinned RHDH CLI 2.1 exports standard module-federation assets and discovers
+the New Frontend System plugin through its `./alpha` entry point. The page
+blueprint supplies the route and navigation title; no `dynamicRoutes` YAML is
+needed. The root export remains available for source consumers. These artifacts
+require an RHDH 2.1 host and cannot replace the deployed 1.10 artifact in place.
 Root Yarn resolutions pin security fixes in the CLI's transitive dependencies
 and frontend libraries while retaining that exporter version. Changes to these
 overrides must pass type checking, tests, package builds, and both dynamic
@@ -36,16 +39,21 @@ Express and `@types/express` stay on version 4 to match the host's HTTP router
 and authentication API. Renovate caps both below version 5 until the Backstage
 host is migrated and the plugin is tested against it.
 
-The final image contains two packages at `/igou-plugin-public-sharing` and
-`/igou-plugin-public-sharing-backend`. It has no entrypoint.
+Each final image contains one exported package and has no entrypoint:
+`ghcr.io/igou-io/rhdh-public-sharing` is the frontend, and
+`ghcr.io/igou-io/rhdh-public-sharing-backend` is the backend. Pin both reviewed
+digests in the host's dynamic plugin configuration without a `!path` suffix.
+`OCI_ANNOTATIONS` publishes the package path in the manifest so the RHDH loader
+can discover it. The artifact smoke check requires this metadata.
 
 The monorepo's existing container workflow builds this image on pull requests
-and publishes commit tags on `main`. The Containerfile runs tests before
-exporting either plugin. Both packages must use the same image revision.
-RHDH 1.10 extracts only the first OCI layer, so both packages must be copied
-into the final image together. CI runs `smoke-test.sh` against the published
-image to verify this layout, the backend entry point, and its private dependencies.
-The artifact publishes for `linux/amd64`, which RHDH 1.10 explicitly requests
+and publishes commit tags on `main`. `BUILD_CONTEXT` shares the source tree and
+`BUILD_TARGET` selects the frontend or backend stage. A change to the shared
+source builds both artifacts. The Containerfile runs tests before exporting
+either plugin. Both packages must use the same source revision. CI runs
+`smoke-test.sh` against each published image to verify its package, the NFS
+feature metadata and remote entry point, or the backend's private dependencies.
+The artifacts publish for `linux/amd64`, which the OCI downloader requests
 when downloading plugins. Its payload contains JavaScript and frontend assets.
 
 ## Configuration
@@ -119,6 +127,10 @@ New names require the matching VPS admission policy, AAP survey field
 The dedicated namespace separates temporary shares from permanent `*.igou.io`
 applications. Existing root-domain shares remain renewable and removable at
 their original addresses. Keep permanent applications outside `sharing.igou.io`.
+
+React, React DOM and their type packages remain on 18.3-compatible versions.
+The Backstage packages in this host release do not declare React 19 support;
+upgrade them together with a host release that supports React 19.
 
 Offline backends remain visible but cannot be shared. Unknown/unavailable
 runtime state disables actions. `Configured` requires current route conditions,
