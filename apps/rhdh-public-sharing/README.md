@@ -39,10 +39,12 @@ Express and `@types/express` stay on version 4 to match the host's HTTP router
 and authentication API. Renovate caps both below version 5 until the Backstage
 host is migrated and the plugin is tested against it.
 
-Each final image contains one exported package at its root and has no entrypoint:
+Each final image contains one exported package and has no entrypoint:
 `ghcr.io/igou-io/rhdh-public-sharing` is the frontend, and
 `ghcr.io/igou-io/rhdh-public-sharing-backend` is the backend. Pin both reviewed
 digests in the host's dynamic plugin configuration without a `!path` suffix.
+`OCI_ANNOTATIONS` publishes the package path in the manifest so the RHDH loader
+can discover it. The artifact smoke check requires this metadata.
 
 The monorepo's existing container workflow builds this image on pull requests
 and publishes commit tags on `main`. `BUILD_CONTEXT` shares the source tree and

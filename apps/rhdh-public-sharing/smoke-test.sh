@@ -20,17 +20,21 @@ if ! jq -e '.layers | length == 1' "$manifest" > /dev/null; then
 fi
 layer=$(jq -r '.layers[0].digest | split(":")[1]' "$manifest")
 archive="$artifact_tmpdir/image/$layer"
+package_path=igou-plugin-public-sharing
+[ "$package_type" != backend ] || package_path=igou-plugin-public-sharing-backend
+jq -er '.annotations["io.backstage.dynamic-packages"]' "$manifest" | base64 --decode | \
+  jq -e --arg path "$package_path" 'length == 1 and (.[0] | has($path))' > /dev/null
 case "$package_type" in
   frontend)
-    tar -tf "$archive" package.json dist/remoteEntry.js > /dev/null
-    tar -xOf "$archive" package.json | jq -e \
+    tar -tf "$archive" "$package_path/package.json" "$package_path/dist/remoteEntry.js" > /dev/null
+    tar -xOf "$archive" "$package_path/package.json" | jq -e \
       '.backstage.features["./alpha"] == "@backstage/FrontendPlugin" and .exports["./alpha"] != null' > /dev/null
-    tar -xOf "$archive" dist/remoteEntry.js | grep -F './alpha' > /dev/null
+    tar -xOf "$archive" "$package_path/dist/remoteEntry.js" | grep -F './alpha' > /dev/null
     ;;
   backend)
-    tar -tf "$archive" package.json node_modules/express/package.json node_modules/yaml/package.json > /dev/null
-    entrypoint=$(tar -xOf "$archive" package.json | jq -er '.main')
-    tar -tf "$archive" "${entrypoint#./}" > /dev/null
+    tar -tf "$archive" "$package_path/package.json" "$package_path/node_modules/express/package.json" "$package_path/node_modules/yaml/package.json" > /dev/null
+    entrypoint=$(tar -xOf "$archive" "$package_path/package.json" | jq -er '.main')
+    tar -tf "$archive" "$package_path/${entrypoint#./}" > /dev/null
     ;;
   *) echo "Unknown plugin type: $package_type" >&2; exit 1 ;;
 esac

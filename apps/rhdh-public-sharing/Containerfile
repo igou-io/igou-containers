@@ -12,9 +12,9 @@ RUN npm install --global "$(node -p 'require("./package.json").packageManager')"
     yarn workspace @igou/plugin-public-sharing export && \
     yarn cache clean && npm cache clean --force && rm -rf node_modules
 
-# RHDH 2.1 loads one package at the root of each OCI artifact.
+# OCI metadata identifies the single exported package in each artifact.
 FROM scratch AS backend
-COPY --from=build /opt/plugin/plugins/backend/dist-dynamic/ /
+COPY --from=build /opt/plugin/plugins/backend/dist-dynamic/ /igou-plugin-public-sharing-backend/
 
 FROM scratch AS frontend
-COPY --from=build /opt/plugin/plugins/frontend/dist-dynamic/ /
+COPY --from=build /opt/plugin/plugins/frontend/dist-dynamic/ /igou-plugin-public-sharing/

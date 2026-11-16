@@ -139,6 +139,9 @@ jobs:
             [[ "$target" =~ ^[a-z0-9][a-z0-9-]*$ ]] || exit 1
             echo "target=$target" >> "$GITHUB_OUTPUT"
           fi
+          if [ -f "apps/$APP/OCI_ANNOTATIONS" ]; then
+            echo "annotations=$(cat "apps/$APP/OCI_ANNOTATIONS")" >> "$GITHUB_OUTPUT"
+          fi
 
       # Apps that can't build for all default platforms declare their own in
       # an apps/<app>/PLATFORMS file (e.g. zfs-exporter: OpenZFS publishes no
@@ -187,6 +190,7 @@ jobs:
           context: ${{ steps.context.outputs.path }}
           file: ${{ steps.context.outputs.path }}/Containerfile
           target: ${{ steps.context.outputs.target }}
+          annotations: ${{ steps.context.outputs.annotations }}
           push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
