@@ -23,12 +23,12 @@
   },
   "peerDependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react-dom": "^18.3.1 || ^19.0.0",
     "react-router-dom": "^6.30.2"
   },
   "devDependencies": {
     "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react-dom": "19.3.1",
     "react-router-dom": "6.30.6"
   },
   "exports": {
