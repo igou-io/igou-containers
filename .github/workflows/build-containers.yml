@@ -74,7 +74,18 @@ jobs:
             const appsToBuild = APPS
               .split(' ')
               .filter(Boolean)
-              .filter((app) => fs.existsSync(`apps/${app}/Containerfile`));
+              .filter((app) =>
+                fs.existsSync(`apps/${app}/Containerfile`) ||
+                fs.existsSync(`apps/${app}/BUILD_CONTEXT`));
+            // Shared build contexts must publish every dependent artifact.
+            for (const app of fs.readdirSync('apps')) {
+              const contextFile = `apps/${app}/BUILD_CONTEXT`;
+              if (fs.existsSync(contextFile) &&
+                  appsToBuild.includes(fs.readFileSync(contextFile, 'utf8').trim()) &&
+                  !appsToBuild.includes(app)) {
+                appsToBuild.push(app);
+              }
+            }
             for (const app of appsToBuild) {
               if (!/^[a-z0-9][a-z0-9-]*$/.test(app)) {
                 throw new Error(`Invalid app name: ${app}`);
@@ -112,12 +123,22 @@ jobs:
         run: |
           set -euo pipefail
           context="$GITHUB_WORKSPACE/apps/$APP"
+          if [ -f "$context/BUILD_CONTEXT" ]; then
+            shared_context="$(cat "$context/BUILD_CONTEXT")"
+            [[ "$shared_context" =~ ^[a-z0-9][a-z0-9-]*$ ]] || exit 1
+            context="$GITHUB_WORKSPACE/apps/$shared_context"
+          fi
           test -f "$context/Containerfile"
           if [ -f "$context/prepare-context.sh" ]; then
             context="$(bash "$context/prepare-context.sh")"
           fi
           test -f "$context/Containerfile"
           echo "path=$context" >> "$GITHUB_OUTPUT"
+          if [ -f "apps/$APP/BUILD_TARGET" ]; then
+            target="$(cat "apps/$APP/BUILD_TARGET")"
+            [[ "$target" =~ ^[a-z0-9][a-z0-9-]*$ ]] || exit 1
+            echo "target=$target" >> "$GITHUB_OUTPUT"
+          fi
 
       # Apps that can't build for all default platforms declare their own in
       # an apps/<app>/PLATFORMS file (e.g. zfs-exporter: OpenZFS publishes no
@@ -165,6 +186,7 @@ jobs:
           provenance: false
           context: ${{ steps.context.outputs.path }}
           file: ${{ steps.context.outputs.path }}/Containerfile
+          target: ${{ steps.context.outputs.target }}
           push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

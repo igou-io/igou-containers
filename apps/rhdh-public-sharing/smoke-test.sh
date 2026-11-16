@@ -2,6 +2,7 @@
 set -euo pipefail
 
 image=${1:?Usage: smoke-test.sh IMAGE}
+package_type=${2:-frontend}
 case "$image" in
   docker://*|containers-storage:*) ;;
   *) image="docker://$image" ;;
@@ -14,21 +15,23 @@ skopeo copy --override-os linux --override-arch amd64 \
 
 manifest="$artifact_tmpdir/image/manifest.json"
 if ! jq -e '.layers | length == 1' "$manifest" > /dev/null; then
-  echo 'RHDH 1.10 requires both plugin packages in the first OCI layer.' >&2
+  echo 'Expected one OCI layer containing the exported plugin package.' >&2
   exit 1
 fi
 layer=$(jq -r '.layers[0].digest | split(":")[1]' "$manifest")
 archive="$artifact_tmpdir/image/$layer"
-frontend=igou-plugin-public-sharing
-backend=igou-plugin-public-sharing-backend
-
-tar -tf "$archive" \
-  "$frontend/package.json" \
-  "$frontend/dist-scalprum/plugin-manifest.json" \
-  "$backend/package.json" \
-  "$backend/node_modules/express/package.json" \
-  "$backend/node_modules/yaml/package.json" > /dev/null
-
-entrypoint=$(tar -xOf "$archive" "$backend/package.json" | jq -er '.main')
-tar -tf "$archive" "$backend/${entrypoint#./}" > /dev/null
-echo 'Verified both RHDH packages and backend dependencies in the first OCI layer.'
+case "$package_type" in
+  frontend)
+    tar -tf "$archive" package.json dist/remoteEntry.js > /dev/null
+    tar -xOf "$archive" package.json | jq -e \
+      '.backstage.features["./alpha"] == "@backstage/FrontendPlugin" and .exports["./alpha"] != null' > /dev/null
+    tar -xOf "$archive" dist/remoteEntry.js | grep -F './alpha' > /dev/null
+    ;;
+  backend)
+    tar -tf "$archive" package.json node_modules/express/package.json node_modules/yaml/package.json > /dev/null
+    entrypoint=$(tar -xOf "$archive" package.json | jq -er '.main')
+    tar -tf "$archive" "${entrypoint#./}" > /dev/null
+    ;;
+  *) echo "Unknown plugin type: $package_type" >&2; exit 1 ;;
+esac
+echo "Verified standalone RHDH 2.1 $package_type artifact."
