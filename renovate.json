@@ -67,38 +67,6 @@
       ],
       "groupName": null,
       "automerge": false
-    },
-    {
-      "description": "Dynamic plugin framework and export tooling must stay compatible with the RHDH host; review these updates together",
-      "matchManagers": [
-        "npm"
-      ],
-      "matchFileNames": [
-        "apps/rhdh-public-sharing/**"
-      ],
-      "matchPackageNames": [
-        "@backstage/**",
-        "@red-hat-developer-hub/cli",
-        "typescript",
-        "@typescript/typescript6"
-      ],
-      "groupName": "rhdh host compatibility",
-      "automerge": false,
-      "separateMajorMinor": true
-    },
-    {
-      "description": "RHDH 2.1 / Backstage 1.54.6 exposes Express 4 router types; migrate Express with the Backstage host",
-      "matchManagers": [
-        "npm"
-      ],
-      "matchFileNames": [
-        "apps/rhdh-public-sharing/**"
-      ],
-      "matchPackageNames": [
-        "express",
-        "@types/express"
-      ],
-      "allowedVersions": "<5"
     }
   ],
   "customManagers": [

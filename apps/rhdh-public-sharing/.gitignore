@@ -1,6 +1,0 @@
-node_modules/
-dist/
-dist-types/
-dist-dynamic/
-coverage/
-*.tsbuildinfo
