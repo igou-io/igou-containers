@@ -6,7 +6,7 @@
     "@piotr-agier/google-drive-mcp": "2.13.0"
   },
   "overrides": {
-    "gaxios": "8.3.2",
+    "gaxios": "8.3.3",
     "zod": "4.6.7"
   }
 }
